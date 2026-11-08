@@ -1,0 +1,931 @@
+-- ============================================================
+-- FULL SCRIPT | Оптимизированная Silent Aura (ESP и частицы — каждый кадр)
+-- ============================================================
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+local VirtualUser = game:GetService("VirtualUser")
+
+local settings = {
+    espEnabled = false, tracerEnabled = false,
+    aimbotEnabled = true, aimbotMode = "Advanced",
+    aimbotRange = 360, hitRange = 10, tickRate = 60,
+    cameraFov = 70, fovCircleEnabled = true,
+    bhopEnabled = false, targetSquareEnabled = true,
+    squareSize = 50, cornerLength = 12,
+    multiAimEnabled = false, multiAimCount = 3,
+    akbEnabled = false, packetCritEnabled = false,
+    antiAimEnabled = false, tpWalkEnabled = false,
+    tpWalkSpeed = 4, silentAuraEnabled = false,
+    silentAuraDelay = 0.1, hatEnabled = false,
+    particlesEnabled = false,
+}
+
+-- ===== Лог =====
+local consoleLines = {}
+local MAX_CONSOLE_LINES = 400
+local consoleLabel = nil
+local function log(msg)
+    local line = "[" .. os.date("%H:%M:%S") .. "] " .. tostring(msg)
+    table.insert(consoleLines, line)
+    if #consoleLines > MAX_CONSOLE_LINES then table.remove(consoleLines, 1) end
+    print(line)
+    if consoleLabel then
+        task.spawn(function()
+            consoleLabel.Text = table.concat(consoleLines, "\n")
+            task.wait()
+            local scroll = consoleLabel.Parent
+            if scroll and scroll:IsA("ScrollingFrame") then
+                scroll.CanvasPosition = Vector2.new(0, scroll.AbsoluteCanvasSize.Y)
+            end
+        end)
+    end
+end
+
+-- ===== EntityRenderer =====
+local EntityRenderer = nil
+local function getEntityRenderer()
+    if EntityRenderer then return EntityRenderer end
+    local er = ReplicatedStorage:FindFirstChild("Client")
+        and ReplicatedStorage.Client:FindFirstChild("Controller")
+        and ReplicatedStorage.Client.Controller:FindFirstChild("EntityRenderer")
+    if not er then log("EntityRenderer не найден"); return nil end
+    local ok, mod = pcall(require, er)
+    if not ok or type(mod) ~= "table" then
+        log("require EntityRenderer не сработал: " .. tostring(mod)); return nil
+    end
+    EntityRenderer = mod; log("EntityRenderer загружен"); return EntityRenderer
+end
+
+-- ===== Remotes =====
+local Remotes = ReplicatedStorage:FindFirstChild("Remotes")
+local attackRemote = Remotes and Remotes:FindFirstChild("client_request_attack")
+local moveRemote = Remotes and Remotes:FindFirstChild("client_request_move")
+if not attackRemote then log("Remote attack не найден"); return end
+if not moveRemote then log("Remote move не найден") end
+
+local packetCritActive = false
+local tpWalkActive = false
+
+-- ===== Цели =====
+local function getTargets()
+    local t = {}
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer and plr.Character then
+            local hrp = plr.Character:FindFirstChild("HumanoidRootPart")
+            local hum = plr.Character:FindFirstChildOfClass("Humanoid")
+            if hrp and hum and hum.Health > 0 then table.insert(t, {plr = plr, hrp = hrp, hum = hum}) end
+        end
+    end
+    return t
+end
+
+local function getNearestN(count, maxDist)
+    local myChar = LocalPlayer.Character
+    if not myChar then return {} end
+    local myHRP = myChar:FindFirstChild("HumanoidRootPart")
+    if not myHRP then return {} end
+    local list = {}
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer and plr.Character then
+            local hrp = plr.Character:FindFirstChild("HumanoidRootPart")
+            local hum = plr.Character:FindFirstChildOfClass("Humanoid")
+            if hrp and hum and hum.Health > 0 then
+                local d = (myHRP.Position - hrp.Position).Magnitude
+                if d <= maxDist then table.insert(list, {plr = plr, hrp = hrp, dist = d}) end
+            end
+        end
+    end
+    table.sort(list, function(a, b) return a.dist < b.dist end)
+    local result = {}
+    for i = 1, math.min(count, #list) do table.insert(result, list[i].plr) end
+    return result
+end
+
+local function getAttackableN(count, hitRange)
+    local myChar = LocalPlayer.Character
+    if not myChar then return {} end
+    local myHRP = myChar:FindFirstChild("HumanoidRootPart")
+    if not myHRP then return {} end
+    local list = {}
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer and plr.Character then
+            local hrp = plr.Character:FindFirstChild("HumanoidRootPart")
+            local hum = plr.Character:FindFirstChildOfClass("Humanoid")
+            if hrp and hum and hum.Health > 0 then
+                local d = (myHRP.Position - hrp.Position).Magnitude
+                if d <= hitRange then table.insert(list, {plr = plr, hrp = hrp, dist = d}) end
+            end
+        end
+    end
+    table.sort(list, function(a, b) return a.dist < b.dist end)
+    local result = {}
+    for i = 1, math.min(count, #list) do table.insert(result, list[i].plr) end
+    return result
+end
+
+local currentAimbotTargets, currentAimbotTarget, currentAttackTargets = {}, nil, {}
+
+-- ===== ESP / Chams / Tracers (каждый кадр) =====
+local chamsFolder = Instance.new("Folder"); chamsFolder.Name = "ChamsFolder"; chamsFolder.Parent = game.CoreGui
+local espCache = {}
+local function createChams(character)
+    local hl = Instance.new("Highlight")
+    hl.Adornee = character; hl.FillColor = Color3.fromRGB(255, 0, 0)
+    hl.FillTransparency = 0.35; hl.OutlineColor = Color3.fromRGB(255, 0, 0)
+    hl.OutlineTransparency = 0.1; hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    hl.Parent = chamsFolder; return hl
+end
+local function createTracer()
+    local line = Drawing.new("Line"); line.Thickness = 1; line.Color = Color3.fromRGB(255, 100, 100)
+    line.Transparency = 0.6; line.Visible = false; return line
+end
+local function updateESP()
+    if not settings.espEnabled then
+        for _, d in pairs(espCache) do
+            if d.hl then d.hl.Enabled = false end
+            if d.name then d.name.Visible = false end
+            if d.tracer then d.tracer.Visible = false end
+        end
+        return
+    end
+    local targets = getTargets(); local seen = {}
+    for _, t in ipairs(targets) do
+        local char = t.plr.Character; seen[char] = true
+        if not espCache[char] then
+            local nameText = Drawing.new("Text"); nameText.Size = 14; nameText.Center = true
+            nameText.Outline = true; nameText.Color = Color3.fromRGB(255, 255, 255); nameText.Visible = false
+            espCache[char] = {hl = createChams(char), name = nameText, tracer = createTracer()}
+        end
+        local d = espCache[char]
+        local pos, onScreen = Camera:WorldToViewportPoint(t.hrp.Position)
+        if onScreen then
+            local dist = (Camera.CFrame.Position - t.hrp.Position).Magnitude
+            d.hl.Enabled = true
+            d.name.Text = string.format("%s [%dm]", t.plr.Name, math.floor(dist))
+            d.name.Position = Vector2.new(pos.X, pos.Y - 40); d.name.Visible = true
+            if settings.tracerEnabled then
+                local ss = Camera.ViewportSize
+                d.tracer.From = Vector2.new(ss.X / 2, ss.Y)
+                d.tracer.To = Vector2.new(pos.X, pos.Y); d.tracer.Visible = true
+            else d.tracer.Visible = false end
+        else
+            d.hl.Enabled = false; d.name.Visible = false; d.tracer.Visible = false
+        end
+    end
+    for char, d in pairs(espCache) do
+        if not seen[char] or not char.Parent then
+            if d.hl then d.hl:Destroy() end
+            if d.name then d.name:Remove() end
+            if d.tracer then d.tracer:Remove() end
+            espCache[char] = nil
+        end
+    end
+end
+RunService.RenderStepped:Connect(updateESP)
+
+-- ===== FOV камеры =====
+RunService.RenderStepped:Connect(function()
+    if Camera then Camera.FieldOfView = settings.cameraFov end
+end)
+
+-- ===== FOV Circle (каждый кадр) =====
+local fovCircle = Drawing.new("Circle")
+fovCircle.Thickness = 1; fovCircle.Color = Color3.fromRGB(0, 200, 255)
+fovCircle.Transparency = 0.5; fovCircle.Visible = false; fovCircle.Filled = false; fovCircle.NumSides = 64
+
+RunService.RenderStepped:Connect(function()
+    if not settings.fovCircleEnabled or settings.aimbotRange >= 360 then
+        fovCircle.Visible = false
+        return
+    end
+    local screenSize = Camera.ViewportSize
+    fovCircle.Position = Vector2.new(screenSize.X / 2, screenSize.Y / 2)
+    fovCircle.Radius = settings.aimbotRange * 1.5
+    fovCircle.Visible = true
+end)
+
+-- ===== BHop =====
+local spaceHeld = false
+local function setSpace(down)
+    if down == spaceHeld then return end
+    spaceHeld = down
+    pcall(function()
+        if down then VirtualUser:SetKeyDown("0x22") else VirtualUser:SetKeyUp("0x22") end
+    end)
+end
+RunService.Heartbeat:Connect(function()
+    if settings.bhopEnabled then setSpace(true) else setSpace(false) end
+end)
+
+-- ===== TP Walk =====
+RunService.RenderStepped:Connect(function(dt)
+    if not settings.tpWalkEnabled then tpWalkActive = false; return end
+    tpWalkActive = true
+    local char = LocalPlayer.Character
+    if not char then return end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hum then return end
+    if hum.MoveDirection.Magnitude > 0 then
+        hum:Move(hum.MoveDirection * settings.tpWalkSpeed * 10, false)
+    end
+end)
+
+-- ===== lookTurn =====
+local function getLookTurn(targetHRP, myHRP)
+    local dir = (targetHRP.Position - myHRP.Position).Unit
+    local localDir = myHRP.CFrame:VectorToObjectSpace(dir)
+    local yaw = math.atan2(-localDir.X, -localDir.Z)
+    local pitch = math.asin(localDir.Y)
+    return Vector2.new(math.deg(yaw), math.deg(pitch))
+end
+
+-- ===== Тики =====
+local lastUpdateTick = math.floor(os.clock() * settings.tickRate)
+local function buildPayload(id, lookTurn)
+    local now = os.clock()
+    local current = math.floor(now * settings.tickRate)
+    local from = lastUpdateTick; lastUpdateTick = current
+    return {
+        id = id, lookTurn = lookTurn, updateTick = current, fromUpdateTick = from,
+        tick = current, time = now, swing = true, tickRate = settings.tickRate,
+        combat = true, attack = true,
+    }
+end
+
+-- ===== Aimbot tick =====
+local function aimbotTick()
+    if not settings.aimbotEnabled then
+        currentAimbotTargets = {}; currentAimbotTarget = nil; currentAttackTargets = {}; return
+    end
+    if settings.multiAimEnabled then
+        currentAimbotTargets = getNearestN(settings.multiAimCount, settings.aimbotRange)
+        currentAttackTargets = getAttackableN(settings.multiAimCount, settings.hitRange)
+    else
+        currentAimbotTargets = getNearestN(1, settings.aimbotRange)
+        currentAttackTargets = getAttackableN(1, settings.hitRange)
+    end
+    currentAimbotTarget = currentAimbotTargets[1]
+end
+RunService.RenderStepped:Connect(aimbotTick)
+
+-- ===== Silent Aura (ОПТИМИЗИРОВАНО) =====
+local lastSilentAura = 0
+local silentAuraHitsPerTarget = 3
+local silentAuraHitDelay = 0.02
+
+RunService.Heartbeat:Connect(function()
+    if not settings.silentAuraEnabled then return end
+    if tick() - lastSilentAura < settings.silentAuraDelay then return end
+
+    local myChar = LocalPlayer.Character
+    if not myChar then return end
+    local myHRP = myChar:FindFirstChild("HumanoidRootPart")
+    if not myHRP then return end
+
+    local targetsInRange = {}
+    for _, target in ipairs(currentAimbotTargets) do
+        if target.Character then
+            local targetHRP = target.Character:FindFirstChild("HumanoidRootPart")
+            if targetHRP then
+                local dist = (myHRP.Position - targetHRP.Position).Magnitude
+                if dist <= settings.hitRange then
+                    table.insert(targetsInRange, {target = target, hrp = targetHRP})
+                end
+            end
+        end
+    end
+
+    if #targetsInRange == 0 then return end
+
+    local er = nil
+    if settings.aimbotMode == "Advanced" then
+        er = getEntityRenderer()
+    end
+
+    for _, entry in ipairs(targetsInRange) do
+        local target = entry.target
+        local targetHRP = entry.hrp
+        local lookTurn = getLookTurn(targetHRP, myHRP)
+
+        local payload
+        if er and er.getPlayerEntityId then
+            local ok, id = pcall(er.getPlayerEntityId, target)
+            if ok and id then
+                payload = buildPayload(id, lookTurn)
+            end
+        end
+
+        if not payload then
+            local now = os.clock()
+            local current = math.floor(now * settings.tickRate)
+            payload = {
+                lookTurn = lookTurn,
+                updateTick = current,
+                fromUpdateTick = current - 1,
+                tick = current,
+                time = now,
+                swing = true,
+                tickRate = settings.tickRate,
+                combat = true,
+                attack = true,
+            }
+        end
+
+        for hit = 1, silentAuraHitsPerTarget do
+            pcall(function() attackRemote:FireServer(payload) end)
+        end
+        log("Silent Aura: " .. target.Name .. " x" .. silentAuraHitsPerTarget)
+    end
+
+    lastSilentAura = tick()
+end)
+
+-- ===== Packet Crit =====
+local function doPacketCrit()
+    if not moveRemote then return end
+    local myChar = LocalPlayer.Character
+    if not myChar then return end
+    local myHRP = myChar:FindFirstChild("HumanoidRootPart")
+    if not myHRP then return end
+    packetCritActive = true
+    pcall(function() moveRemote:FireServer("~N", myHRP.Position, 0, 0, "standing", false, true, false, 0) end)
+    task.wait(0.01)
+    pcall(function() moveRemote:FireServer("~N", myHRP.Position, 0, 0, "standing", true, false, false, 0) end)
+    packetCritActive = false
+end
+
+-- ===== Anti-Aim (каждый кадр) =====
+local antiAimSpin = 0
+local originalNeckC0, originalWaistC0 = nil, nil
+local function getJoints()
+    local char = LocalPlayer.Character
+    if not char then return nil end
+    local head = char:FindFirstChild("Head")
+    local upperTorso = char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso")
+    if not (head and upperTorso) then return nil end
+    return {
+        neck = head:FindFirstChild("Neck"),
+        waist = upperTorso:FindFirstChild("Waist"),
+        char = char,
+    }
+end
+RunService.RenderStepped:Connect(function(dt)
+    local j = getJoints()
+    if not j then return end
+    if j.neck and not originalNeckC0 then originalNeckC0 = j.neck.C0 end
+    if j.waist and not originalWaistC0 then originalWaistC0 = j.waist.C0 end
+    if not settings.antiAimEnabled then
+        if originalNeckC0 and j.neck then j.neck.C0 = originalNeckC0 end
+        if originalWaistC0 and j.waist then j.waist.C0 = originalWaistC0 end
+        return
+    end
+    local hrp = j.char:FindFirstChild("HumanoidRootPart")
+    if hrp then
+        antiAimSpin = antiAimSpin + dt * 8
+        local pos = hrp.Position
+        hrp.CFrame = CFrame.new(pos) * CFrame.Angles(0, antiAimSpin, 0)
+    end
+    if j.neck and originalNeckC0 then
+        j.neck.C0 = originalNeckC0 * CFrame.Angles(math.rad(-80), 0, 0)
+    end
+    if j.waist and originalWaistC0 then
+        j.waist.C0 = originalWaistC0 * CFrame.Angles(math.rad(-30), 0, 0)
+    end
+end)
+
+-- ===== Частицы от целей Aimbot (каждый кадр) =====
+local targetParticles = {}
+local function createTargetParticles(character)
+    if targetParticles[character] then return end
+    local hrp = character:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+    local att = Instance.new("Attachment"); att.Parent = hrp
+    local pe = Instance.new("ParticleEmitter"); pe.Parent = att
+    pe.Texture = "rbxassetid://243098098"
+    pe.LightEmission = 1; pe.LightInfluence = 0
+    pe.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255))
+    pe.Size = NumberSequence.new({
+        NumberSequenceKeypoint.new(0, 1.8),
+        NumberSequenceKeypoint.new(0.5, 1.2),
+        NumberSequenceKeypoint.new(1, 0)
+    })
+    pe.Transparency = NumberSequence.new({
+        NumberSequenceKeypoint.new(0, 0),
+        NumberSequenceKeypoint.new(0.7, 0.3),
+        NumberSequenceKeypoint.new(1, 1)
+    })
+    pe.Lifetime = NumberRange.new(2, 3.5)
+    pe.Rate = 250
+    pe.Speed = NumberRange.new(1, 2.5)
+    pe.SpreadAngle = Vector2.new(180, 180)
+    pe.Acceleration = Vector3.new(0, 1.5, 0)
+    pe.Drag = 2.5
+    pe.LockedToPart = false
+    pe.VelocityInheritance = 2
+    pe.Rotation = NumberRange.new(0, 360)
+    pe.RotSpeed = NumberRange.new(-90, 90)
+    targetParticles[character] = {att = att, pe = pe}
+end
+local function removeTargetParticles(character)
+    local data = targetParticles[character]
+    if data then
+        if data.att then data.att:Destroy() end
+        targetParticles[character] = nil
+    end
+end
+RunService.RenderStepped:Connect(function()
+    if not settings.particlesEnabled then
+        for char, _ in pairs(targetParticles) do removeTargetParticles(char) end
+        return
+    end
+    local activeChars = {}
+    for _, target in ipairs(currentAimbotTargets) do
+        local char = target.Character
+        if char then
+            activeChars[char] = true
+            createTargetParticles(char)
+            local data = targetParticles[char]
+            if data and data.pe then
+                data.pe.Rate = 250
+                data.pe.Enabled = true
+            end
+        end
+    end
+    for char, _ in pairs(targetParticles) do
+        if not activeChars[char] then removeTargetParticles(char) end
+    end
+end)
+
+-- ===== Шляпа-гуру (пирамида из 4 частей) =====
+local hatModel = Instance.new("Model"); hatModel.Name = "GuruHat"
+local hatBase = Instance.new("Part")
+hatBase.Name = "HatBase"; hatBase.Size = Vector3.new(2.2, 0.2, 2.2); hatBase.Shape = Enum.PartType.Block
+hatBase.Color = Color3.fromRGB(255, 255, 255); hatBase.Material = Enum.Material.Neon
+hatBase.Transparency = 0.5; hatBase.CanCollide = false; hatBase.Massless = true; hatBase.Parent = hatModel
+
+local coneParts = {}
+for i = 1, 4 do
+    local part = Instance.new("Part")
+    part.Name = "PyramidSide" .. i; part.Size = Vector3.new(1.1, 2, 0.2)
+    part.Color = Color3.fromRGB(255, 255, 255); part.Material = Enum.Material.Neon
+    part.Transparency = 0.5; part.CanCollide = false; part.Massless = true; part.Parent = hatModel
+    table.insert(coneParts, part)
+end
+hatModel.Parent = game.CoreGui
+
+local function attachHat(char)
+    local head = char:FindFirstChild("Head")
+    if head and not head:FindFirstChild("GuruHatWeldBase") then
+        hatModel.Parent = char
+        hatBase.CFrame = head.CFrame * CFrame.new(0, 0.6, 0)
+        local weldBase = Instance.new("WeldConstraint")
+        weldBase.Name = "GuruHatWeldBase"; weldBase.Part0 = head; weldBase.Part1 = hatBase; weldBase.Parent = head
+        local angles = {0, 90, 180, 270}
+        for i, part in ipairs(coneParts) do
+            local angle = math.rad(angles[i])
+            part.CFrame = head.CFrame * CFrame.new(0, 1.4, 0) * CFrame.Angles(0, angle, 0) * CFrame.new(0, 0, -0.55) * CFrame.Angles(math.rad(45), 0, 0)
+            local weld = Instance.new("WeldConstraint")
+            weld.Name = "GuruHatWeldSide" .. i
+            weld.Part0 = head; weld.Part1 = part; weld.Parent = head
+        end
+    end
+end
+LocalPlayer.CharacterAdded:Connect(function() task.wait(0.5); attachHat(LocalPlayer.Character) end)
+if LocalPlayer.Character then attachHat(LocalPlayer.Character) end
+
+-- ===== Хук FireServer =====
+local akbLastPos = nil
+local function onAttackCall(self, ...)
+    if not settings.aimbotEnabled then return nil end
+    if settings.packetCritEnabled then doPacketCrit() end
+    local myChar = LocalPlayer.Character
+    local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
+    if not myHRP then return nil end
+    local targets = currentAttackTargets
+    if #targets == 0 then return nil end
+    local firstPayload = nil
+    for i, target in ipairs(targets) do
+        local targetHRP = target.Character and target.Character:FindFirstChild("HumanoidRootPart")
+        if targetHRP then
+            local lookTurn = getLookTurn(targetHRP, myHRP)
+            local payload
+            if settings.aimbotMode == "Advanced" then
+                local er = getEntityRenderer()
+                if er and er.getPlayerEntityId then
+                    local ok, id = pcall(er.getPlayerEntityId, target)
+                    if ok and id then payload = buildPayload(id, lookTurn) end
+                end
+            end
+            if not payload then
+                payload = {
+                    lookTurn = lookTurn, updateTick = math.floor(os.clock() * settings.tickRate),
+                    fromUpdateTick = math.floor(os.clock() * settings.tickRate) - 1,
+                    tick = math.floor(os.clock() * settings.tickRate), time = os.clock(),
+                    swing = true, tickRate = settings.tickRate, combat = true, attack = true,
+                }
+            end
+            if i == 1 then firstPayload = payload
+            else task.spawn(function() pcall(function() attackRemote:FireServer(payload) end) end) end
+            log("Attack[" .. i .. "/" .. #targets .. "]: " .. target.Name)
+        end
+    end
+    return firstPayload
+end
+
+local hooked = false
+if getrawmetatable then
+    local ok, err = pcall(function()
+        local mt = getrawmetatable(game); local oldNamecall = mt.__namecall
+        setreadonly(mt, false)
+        mt.__namecall = newcclosure(function(self, ...)
+            local method = getnamecallmethod()
+            if method == "FireServer" then
+                if self == attackRemote then
+                    local payload = onAttackCall(self, ...)
+                    if payload then return oldNamecall(self, payload) end
+                elseif self == moveRemote and settings.akbEnabled and not packetCritActive then
+                    if not tpWalkActive then
+                        local args = {...}; local pos = args[2]
+                        if typeof(pos) == "Vector3" then
+                            if akbLastPos then
+                                local delta = (pos - akbLastPos).Magnitude
+                                if delta > 5 then log("AKB: блок"); return end
+                            end
+                            akbLastPos = pos
+                        end
+                    end
+                end
+            end
+            return oldNamecall(self, ...)
+        end)
+        setreadonly(mt, true); hooked = true; log("Хук getrawmetatable OK")
+    end)
+    if not hooked then log("getrawmetatable FAIL: " .. tostring(err)) end
+end
+if not hooked and hookfunction then
+    local ok, err = pcall(function()
+        local oldFire = attackRemote.FireServer
+        hookfunction(attackRemote.FireServer, function(self, ...)
+            local payload = onAttackCall(self, ...)
+            if payload then return oldFire(self, payload) end
+            return oldFire(self, ...)
+        end)
+    end)
+    if ok then hooked = true; log("Хук hookfunction OK") else log("hookfunction FAIL: " .. tostring(err)) end
+end
+if not hooked then log("Хук не установлен") end
+
+-- ============================================================
+-- CORNER SQUARES (каждый кадр)
+-- ============================================================
+local MAX_SQUARES = 10
+local squarePool = {}
+for i = 1, MAX_SQUARES do
+    local lines = {}
+    for j = 1, 8 do
+        local l = Drawing.new("Line"); l.Thickness = 2; l.Color = Color3.fromRGB(255, 255, 0)
+        l.Transparency = 1; l.Visible = false; table.insert(lines, l)
+    end
+    squarePool[i] = {lines = lines, rotation = 0}
+end
+local function hideSquare(sq) for _, l in ipairs(sq.lines) do l.Visible = false end end
+RunService.RenderStepped:Connect(function(dt)
+    if not settings.targetSquareEnabled then
+        for _, sq in ipairs(squarePool) do hideSquare(sq) end; return
+    end
+    local targets = currentAimbotTargets
+    if #targets == 0 then for _, sq in ipairs(squarePool) do hideSquare(sq) end; return end
+    local myChar = LocalPlayer.Character
+    local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
+    for i, sq in ipairs(squarePool) do
+        local target = targets[i]
+        if not target or not target.Character then hideSquare(sq)
+        else
+            local hrp = target.Character:FindFirstChild("HumanoidRootPart")
+            if not hrp then hideSquare(sq)
+            else
+                local pos, onScreen = Camera:WorldToViewportPoint(hrp.Position)
+                if not onScreen then hideSquare(sq)
+                else
+                    sq.rotation = sq.rotation + dt * 3
+                    local half = settings.squareSize / 2
+                    local cosR = math.cos(sq.rotation); local sinR = math.sin(sq.rotation)
+                    local cl = settings.cornerLength
+                    local corners = {
+                        Vector2.new(-half, -half), Vector2.new(half, -half),
+                        Vector2.new(half, half), Vector2.new(-half, half),
+                    }
+                    local screenCorners = {}
+                    for k, c in ipairs(corners) do
+                        local rx = c.X * cosR - c.Y * sinR
+                        local ry = c.X * sinR + c.Y * cosR
+                        screenCorners[k] = Vector2.new(pos.X + rx, pos.Y + ry)
+                    end
+                    local inHitRange = false
+                    if myHRP then
+                        local dist = (myHRP.Position - hrp.Position).Magnitude
+                        inHitRange = dist <= settings.hitRange
+                    end
+                    local color = inHitRange and Color3.fromRGB(0, 150, 255) or Color3.fromRGB(255, 255, 0)
+                    local idx = 1
+                    for k = 1, 4 do
+                        local c = screenCorners[k]
+                        local prevK = k - 1; if prevK < 1 then prevK = 4 end
+                        local nextK = k + 1; if nextK > 4 then nextK = 1 end
+                        local prevCorner = screenCorners[prevK]
+                        local nextCorner = screenCorners[nextK]
+                        local dirPrev = (prevCorner - c).Unit * cl
+                        local dirNext = (nextCorner - c).Unit * cl
+                        local l1 = sq.lines[idx]; l1.From = c; l1.To = c + dirPrev; l1.Color = color; l1.Visible = true; idx = idx + 1
+                        local l2 = sq.lines[idx]; l2.From = c; l2.To = c + dirNext; l2.Color = color; l2.Visible = true; idx = idx + 1
+                    end
+                end
+            end
+        end
+    end
+end)
+
+-- ============================================================
+-- МЕНЮ
+-- ============================================================
+local gui = Instance.new("ScreenGui")
+gui.Name = "FullScript"; gui.ResetOnSpawn = false
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling; gui.Parent = game.CoreGui
+
+local expandedSize = UDim2.new(0, 460, 0, 880)
+local collapsedSize = UDim2.new(0, 460, 0, 36)
+
+local frame = Instance.new("Frame")
+frame.Size = expandedSize; frame.Position = UDim2.new(0, 20, 0, 20)
+frame.BackgroundColor3 = Color3.fromRGB(20, 20, 30); frame.BackgroundTransparency = 0.15
+frame.BorderSizePixel = 0; frame.Active = true; frame.Draggable = true
+frame.ClipsDescendants = true; frame.Parent = gui
+Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 12)
+
+local shadow = Instance.new("ImageLabel")
+shadow.Size = UDim2.new(1, 30, 1, 30); shadow.Position = UDim2.new(0, -15, 0, -15)
+shadow.BackgroundTransparency = 1; shadow.Image = "rbxassetid://1316045217"
+shadow.ImageColor3 = Color3.fromRGB(0, 0, 0); shadow.ImageTransparency = 0.6
+shadow.ScaleType = Enum.ScaleType.Slice; shadow.SliceCenter = Rect.new(10, 10, 118, 118)
+shadow.Parent = frame
+
+local title = Instance.new("TextButton")
+title.Size = UDim2.new(1, 0, 0, 36); title.BackgroundColor3 = Color3.fromRGB(40, 40, 60)
+title.BackgroundTransparency = 0.2; title.BorderSizePixel = 0
+title.Text = "✦ FULL MENU ✦"; title.TextColor3 = Color3.fromRGB(255, 255, 255)
+title.Font = Enum.Font.GothamBold; title.TextSize = 15; title.Parent = frame
+Instance.new("UICorner", title).CornerRadius = UDim.new(0, 12)
+
+local content = Instance.new("Frame")
+content.Size = UDim2.new(1, 0, 1, -36); content.Position = UDim2.new(0, 0, 0, 36)
+content.BackgroundTransparency = 1; content.Parent = frame
+
+local collapsed = false
+title.MouseButton1Click:Connect(function()
+    collapsed = not collapsed
+    if collapsed then
+        frame.Size = collapsedSize; content.Visible = false
+        title.Text = "✦ FULL MENU ✦ ▶"
+    else
+        frame.Size = expandedSize; content.Visible = true
+        title.Text = "✦ FULL MENU ✦ ▼"
+    end
+end)
+
+local function makeToggle(text, y, initialValue, callback)
+    local container = Instance.new("Frame")
+    container.Size = UDim2.new(1, -24, 0, 30); container.Position = UDim2.new(0, 12, 0, y)
+    container.BackgroundColor3 = Color3.fromRGB(35, 35, 50); container.BackgroundTransparency = 0.3
+    container.BorderSizePixel = 0; container.Parent = content
+    Instance.new("UICorner", container).CornerRadius = UDim.new(0, 15)
+
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, -60, 1, 0); label.Position = UDim2.new(0, 14, 0, 0)
+    label.BackgroundTransparency = 1; label.Text = text
+    label.TextColor3 = Color3.fromRGB(220, 220, 240); label.Font = Enum.Font.GothamBold
+    label.TextSize = 12; label.TextXAlignment = Enum.TextXAlignment.Left; label.Parent = container
+
+    local switchBg = Instance.new("Frame")
+    switchBg.Size = UDim2.new(0, 40, 0, 20); switchBg.Position = UDim2.new(1, -50, 0.5, -10)
+    switchBg.BackgroundColor3 = initialValue and Color3.fromRGB(0, 180, 100) or Color3.fromRGB(70, 70, 90)
+    switchBg.BorderSizePixel = 0; switchBg.Parent = container
+    Instance.new("UICorner", switchBg).CornerRadius = UDim.new(0, 10)
+
+    local knob = Instance.new("Frame")
+    knob.Size = UDim2.new(0, 16, 0, 16)
+    knob.Position = initialValue and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
+    knob.BackgroundColor3 = Color3.fromRGB(255, 255, 255); knob.BorderSizePixel = 0; knob.Parent = switchBg
+    Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+
+    local value = initialValue
+    switchBg.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            value = not value
+            switchBg.BackgroundColor3 = value and Color3.fromRGB(0, 180, 100) or Color3.fromRGB(70, 70, 90)
+            knob.Position = value and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
+            callback(value)
+        end
+    end)
+end
+
+local function makeBtn(text, y, color)
+    local b = Instance.new("TextButton")
+    b.Size = UDim2.new(1, -24, 0, 28); b.Position = UDim2.new(0, 12, 0, y)
+    b.BackgroundColor3 = color or Color3.fromRGB(40, 40, 60); b.BackgroundTransparency = 0.2
+    b.BorderSizePixel = 0; b.Text = text
+    b.TextColor3 = Color3.fromRGB(230, 230, 255); b.Font = Enum.Font.GothamBold
+    b.TextSize = 12; b.Parent = content
+    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 8)
+    return b
+end
+
+makeToggle("ESP", 8, false, function(v) settings.espEnabled = v end)
+makeToggle("Tracers", 42, false, function(v) settings.tracerEnabled = v end)
+makeToggle("Aimbot", 76, true, function(v) settings.aimbotEnabled = v; log("Aimbot: " .. (v and "ON" or "OFF")) end)
+makeToggle("Multi Aimbot", 110, false, function(v) settings.multiAimEnabled = v; log("Multi: " .. (v and "ON" or "OFF")) end)
+makeToggle("BHop", 144, false, function(v) settings.bhopEnabled = v; log("BHop: " .. (v and "ON" or "OFF")) end)
+makeToggle("AKB", 178, false, function(v) settings.akbEnabled = v; log("AKB: " .. (v and "ON" or "OFF")) end)
+makeToggle("Packet Crit", 212, false, function(v) settings.packetCritEnabled = v; log("Crit: " .. (v and "ON" or "OFF")) end)
+makeToggle("Anti-Aim", 246, false, function(v) settings.antiAimEnabled = v; log("Anti-Aim: " .. (v and "ON" or "OFF")) end)
+makeToggle("TP Walk", 280, false, function(v) settings.tpWalkEnabled = v; log("TP Walk: " .. (v and "ON" or "OFF")) end)
+makeToggle("Silent Aura", 314, false, function(v) settings.silentAuraEnabled = v; log("Silent Aura: " .. (v and "ON" or "OFF")) end)
+makeToggle("Corner Squares", 348, true, function(v) settings.targetSquareEnabled = v; log("Squares: " .. (v and "ON" or "OFF")) end)
+makeToggle("Частицы (от целей)", 382, false, function(v) settings.particlesEnabled = v; log("Частицы: " .. (v and "ON" or "OFF")) end)
+makeToggle("Шляпа-гуру", 416, false, function(v) settings.hatEnabled = v; log("Шляпа: " .. (v and "ON" or "OFF")) end)
+makeToggle("FOV Circle", 450, true, function(v) settings.fovCircleEnabled = v; log("FOV Circle: " .. (v and "ON" or "OFF")) end)
+
+local aimModeBtn = makeBtn("Aimbot Mode: Advanced", 486, Color3.fromRGB(40, 80, 140))
+aimModeBtn.MouseButton1Click:Connect(function()
+    settings.aimbotMode = (settings.aimbotMode == "Advanced") and "Basic" or "Advanced"
+    aimModeBtn.Text = "Aimbot Mode: " .. settings.aimbotMode
+    log("Aimbot Mode: " .. settings.aimbotMode)
+end)
+
+local countBtn = makeBtn("Multi Count: 3", 520, Color3.fromRGB(40, 80, 140))
+local countOptions = {3, 5, 8, 10}; local countIndex = 1
+countBtn.MouseButton1Click:Connect(function()
+    countIndex = countIndex + 1; if countIndex > #countOptions then countIndex = 1 end
+    settings.multiAimCount = countOptions[countIndex]
+    countBtn.Text = "Multi Count: " .. settings.multiAimCount
+    log("Multi Count: " .. settings.multiAimCount)
+end)
+
+local fovLabel = Instance.new("TextLabel")
+fovLabel.Size = UDim2.new(1, -24, 0, 18); fovLabel.Position = UDim2.new(0, 12, 0, 554)
+fovLabel.BackgroundTransparency = 1
+fovLabel.Text = "Aimbot FOV: " .. settings.aimbotRange .. (settings.aimbotRange >= 360 and " (все вокруг)" or "")
+fovLabel.TextColor3 = Color3.fromRGB(220, 220, 240); fovLabel.Font = Enum.Font.Gotham
+fovLabel.TextSize = 12; fovLabel.TextXAlignment = Enum.TextXAlignment.Left; fovLabel.Parent = content
+
+local sliderBg = Instance.new("Frame")
+sliderBg.Size = UDim2.new(1, -24, 0, 10); sliderBg.Position = UDim2.new(0, 12, 0, 576)
+sliderBg.BackgroundColor3 = Color3.fromRGB(70, 70, 90); sliderBg.BorderSizePixel = 0; sliderBg.Parent = content
+Instance.new("UICorner", sliderBg).CornerRadius = UDim.new(0, 5)
+local rel0 = (settings.aimbotRange - 30) / 330
+local fill = Instance.new("Frame")
+fill.Size = UDim2.new(rel0, 0, 1, 0); fill.BackgroundColor3 = Color3.fromRGB(255, 140, 0)
+fill.BorderSizePixel = 0; fill.Parent = sliderBg
+Instance.new("UICorner", fill).CornerRadius = UDim.new(0, 5)
+local knob = Instance.new("Frame")
+knob.Size = UDim2.new(0, 20, 0, 20); knob.Position = UDim2.new(rel0, -10, 0.5, -10)
+knob.BackgroundColor3 = Color3.fromRGB(255, 255, 255); knob.BorderSizePixel = 0; knob.Parent = sliderBg
+Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+local dragging = false
+local function updateFov(x)
+    local rel = math.clamp((x - sliderBg.AbsolutePosition.X) / sliderBg.AbsoluteSize.X, 0, 1)
+    settings.aimbotRange = math.floor(30 + rel * 330)
+    fovLabel.Text = "Aimbot FOV: " .. settings.aimbotRange .. (settings.aimbotRange >= 360 and " (все вокруг)" or "")
+    fill.Size = UDim2.new(rel, 0, 1, 0)
+    knob.Position = UDim2.new(rel, -10, 0.5, -10)
+end
+sliderBg.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true; updateFov(input.Position.X)
+    end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        updateFov(input.Position.X)
+    end
+end)
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = false
+    end
+end)
+
+local camFovLabel = Instance.new("TextLabel")
+camFovLabel.Size = UDim2.new(1, -24, 0, 18); camFovLabel.Position = UDim2.new(0, 12, 0, 596)
+camFovLabel.BackgroundTransparency = 1
+camFovLabel.Text = "Camera FOV: " .. settings.cameraFov .. " (макс 120)"
+camFovLabel.TextColor3 = Color3.fromRGB(220, 220, 240); camFovLabel.Font = Enum.Font.Gotham
+camFovLabel.TextSize = 12; camFovLabel.TextXAlignment = Enum.TextXAlignment.Left; camFovLabel.Parent = content
+
+local camSliderBg = Instance.new("Frame")
+camSliderBg.Size = UDim2.new(1, -24, 0, 10); camSliderBg.Position = UDim2.new(0, 12, 0, 618)
+camSliderBg.BackgroundColor3 = Color3.fromRGB(70, 70, 90); camSliderBg.BorderSizePixel = 0; camSliderBg.Parent = content
+Instance.new("UICorner", camSliderBg).CornerRadius = UDim.new(0, 5)
+local camRel0 = (settings.cameraFov - 30) / 90
+local camFill = Instance.new("Frame")
+camFill.Size = UDim2.new(camRel0, 0, 1, 0); camFill.BackgroundColor3 = Color3.fromRGB(0, 200, 255)
+camFill.BorderSizePixel = 0; camFill.Parent = camSliderBg
+Instance.new("UICorner", camFill).CornerRadius = UDim.new(0, 5)
+local camKnob = Instance.new("Frame")
+camKnob.Size = UDim2.new(0, 20, 0, 20); camKnob.Position = UDim2.new(camRel0, -10, 0.5, -10)
+camKnob.BackgroundColor3 = Color3.fromRGB(255, 255, 255); camKnob.BorderSizePixel = 0; camKnob.Parent = camSliderBg
+Instance.new("UICorner", camKnob).CornerRadius = UDim.new(1, 0)
+local camDragging = false
+local function updateCamFov(x)
+    local rel = math.clamp((x - camSliderBg.AbsolutePosition.X) / camSliderBg.AbsoluteSize.X, 0, 1)
+    settings.cameraFov = math.floor(30 + rel * 90)
+    camFovLabel.Text = "Camera FOV: " .. settings.cameraFov .. " (макс 120)"
+    camFill.Size = UDim2.new(rel, 0, 1, 0)
+    camKnob.Position = UDim2.new(rel, -10, 0.5, -10)
+end
+camSliderBg.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        camDragging = true; updateCamFov(input.Position.X)
+    end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if camDragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        updateCamFov(input.Position.X)
+    end
+end)
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        camDragging = false
+    end
+end)
+
+local consoleFrame = Instance.new("Frame")
+consoleFrame.Size = UDim2.new(1, -24, 1, -660); consoleFrame.Position = UDim2.new(0, 12, 0, 646)
+consoleFrame.BackgroundColor3 = Color3.fromRGB(12, 12, 20); consoleFrame.BackgroundTransparency = 0.1
+consoleFrame.BorderSizePixel = 0; consoleFrame.Parent = content
+Instance.new("UICorner", consoleFrame).CornerRadius = UDim.new(0, 8)
+
+local consoleTitle = Instance.new("TextLabel")
+consoleTitle.Size = UDim2.new(1, -70, 0, 20); consoleTitle.Position = UDim2.new(0, 10, 0, 4)
+consoleTitle.BackgroundTransparency = 1; consoleTitle.Text = "CONSOLE"
+consoleTitle.TextColor3 = Color3.fromRGB(0, 200, 255); consoleTitle.Font = Enum.Font.Code
+consoleTitle.TextSize = 11; consoleTitle.TextXAlignment = Enum.TextXAlignment.Left; consoleTitle.Parent = consoleFrame
+
+local copyBtn = Instance.new("TextButton")
+copyBtn.Size = UDim2.new(0, 56, 0, 18); copyBtn.Position = UDim2.new(1, -64, 0, 5)
+copyBtn.BackgroundColor3 = Color3.fromRGB(0, 120, 180); copyBtn.BorderSizePixel = 0
+copyBtn.Text = "Copy"; copyBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+copyBtn.Font = Enum.Font.GothamBold; copyBtn.TextSize = 10; copyBtn.Parent = consoleFrame
+Instance.new("UICorner", copyBtn).CornerRadius = UDim.new(0, 4)
+copyBtn.MouseButton1Click:Connect(function()
+    local text = table.concat(consoleLines, "\n")
+    if #text == 0 then text = "(пусто)" end
+    local ok = pcall(function()
+        if setclipboard then setclipboard(text)
+        elseif toclipboard then toclipboard(text)
+        elseif Clipboard and Clipboard.set then Clipboard.set(text)
+        else error("no clipboard") end
+    end)
+    if ok then
+        copyBtn.Text = "Copied!"; copyBtn.BackgroundColor3 = Color3.fromRGB(0, 160, 60)
+        task.delay(1.2, function() copyBtn.Text = "Copy"; copyBtn.BackgroundColor3 = Color3.fromRGB(0, 120, 180) end)
+        log("Скопировано (" .. #consoleLines .. " строк)")
+    else
+        copyBtn.Text = "Fail"; copyBtn.BackgroundColor3 = Color3.fromRGB(180, 0, 0)
+        task.delay(1.2, function() copyBtn.Text = "Copy"; copyBtn.BackgroundColor3 = Color3.fromRGB(0, 120, 180) end)
+        log("Не удалось скопировать")
+    end
+end)
+
+local scroll = Instance.new("ScrollingFrame")
+scroll.Size = UDim2.new(1, -10, 1, -30); scroll.Position = UDim2.new(0, 5, 0, 26)
+scroll.BackgroundTransparency = 1; scroll.BorderSizePixel = 0
+scroll.ScrollBarThickness = 4; scroll.ScrollBarImageColor3 = Color3.fromRGB(80, 80, 110)
+scroll.CanvasSize = UDim2.new(0, 0, 0, 0); scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+scroll.Parent = consoleFrame
+
+consoleLabel = Instance.new("TextLabel")
+consoleLabel.Size = UDim2.new(1, 0, 0, 0); consoleLabel.BackgroundTransparency = 1
+consoleLabel.Text = ""; consoleLabel.TextColor3 = Color3.fromRGB(200, 200, 220)
+consoleLabel.Font = Enum.Font.Code; consoleLabel.TextSize = 10
+consoleLabel.TextXAlignment = Enum.TextXAlignment.Left; consoleLabel.TextYAlignment = Enum.TextYAlignment.Top
+consoleLabel.TextWrapped = true; consoleLabel.AutomaticSize = Enum.AutomaticSize.Y
+consoleLabel.Parent = scroll
+
+-- Обновление шляпы по тумблеру
+RunService.Heartbeat:Connect(function()
+    if hatModel and hatModel.Parent then
+        local t = settings.hatEnabled and 0.5 or 1
+        if hatBase then hatBase.Transparency = t end
+        for _, part in ipairs(coneParts) do
+            if part then part.Transparency = t end
+        end
+    end
+end)
+
+log("Full Script загружен.")
+log("Silent Aura оптимизирована: без task.wait внутри, payload кэшируется.")
+log("ESP и частицы — каждый кадр.")
