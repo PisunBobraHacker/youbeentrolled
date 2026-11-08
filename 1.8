@@ -1,5 +1,5 @@
 -- ============================================================
--- FULL SCRIPT | Оптимизированная Silent Aura (ESP и частицы — каждый кадр)
+-- FULL SCRIPT | Anti-Aim + Aimbot + Silent Aura (растянута) + Burst (только ручной)
 -- ============================================================
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -22,7 +22,10 @@ local settings = {
     tpWalkSpeed = 4, silentAuraEnabled = false,
     silentAuraDelay = 0.1, hatEnabled = false,
     particlesEnabled = false,
+    burstAttackEnabled = false, burstAttackCount = 5,
 }
+
+local isSilentAuraAttack = false
 
 -- ===== Лог =====
 local consoleLines = {}
@@ -129,7 +132,7 @@ end
 
 local currentAimbotTargets, currentAimbotTarget, currentAttackTargets = {}, nil, {}
 
--- ===== ESP / Chams / Tracers (каждый кадр) =====
+-- ===== ESP / Chams / Tracers =====
 local chamsFolder = Instance.new("Folder"); chamsFolder.Name = "ChamsFolder"; chamsFolder.Parent = game.CoreGui
 local espCache = {}
 local function createChams(character)
@@ -192,7 +195,7 @@ RunService.RenderStepped:Connect(function()
     if Camera then Camera.FieldOfView = settings.cameraFov end
 end)
 
--- ===== FOV Circle (каждый кадр) =====
+-- ===== FOV Circle =====
 local fovCircle = Drawing.new("Circle")
 fovCircle.Thickness = 1; fovCircle.Color = Color3.fromRGB(0, 200, 255)
 fovCircle.Transparency = 0.5; fovCircle.Visible = false; fovCircle.Filled = false; fovCircle.NumSides = 64
@@ -245,15 +248,33 @@ end
 
 -- ===== Тики =====
 local lastUpdateTick = math.floor(os.clock() * settings.tickRate)
-local function buildPayload(id, lookTurn)
+local function buildPayload(id, lookTurn, tickOffset)
     local now = os.clock()
-    local current = math.floor(now * settings.tickRate)
-    local from = lastUpdateTick; lastUpdateTick = current
+    local current = math.floor(now * settings.tickRate) + (tickOffset or 0)
+    local from = lastUpdateTick
+    if not tickOffset then lastUpdateTick = current end
     return {
         id = id, lookTurn = lookTurn, updateTick = current, fromUpdateTick = from,
         tick = current, time = now, swing = true, tickRate = settings.tickRate,
         combat = true, attack = true,
     }
+end
+
+-- ===== Burst Attack (только ручной удар) =====
+local function sendBurst(remote, payload, count)
+    local realCount = math.min(count, 5)
+    pcall(function() remote:FireServer(payload) end)
+    for i = 1, realCount - 1 do
+        local p = {}
+        for k, v in pairs(payload) do p[k] = v end
+        p.updateTick = payload.updateTick + i * 10
+        p.tick = p.updateTick
+        p.fromUpdateTick = p.updateTick - 1
+        task.spawn(function()
+            task.wait(i * 0.03)
+            pcall(function() remote:FireServer(p) end)
+        end)
+    end
 end
 
 -- ===== Aimbot tick =====
@@ -272,10 +293,50 @@ local function aimbotTick()
 end
 RunService.RenderStepped:Connect(aimbotTick)
 
--- ===== Silent Aura (ОПТИМИЗИРОВАНО) =====
+-- ===== Silent Aura (растянута, без Burst) =====
 local lastSilentAura = 0
 local silentAuraHitsPerTarget = 3
-local silentAuraHitDelay = 0.02
+local silentAuraHitDelay = 0.03
+local silentAuraQueue = {}
+
+task.spawn(function()
+    while task.wait(silentAuraHitDelay) do
+        if not settings.silentAuraEnabled then
+            silentAuraQueue = {}
+        elseif #silentAuraQueue > 0 then
+            local entry = table.remove(silentAuraQueue, 1)
+            local target = entry.target
+            local targetHRP = entry.hrp
+            local myHRP = entry.myHRP
+            local er = entry.er
+            if target and target.Character and targetHRP and myHRP then
+                local lookTurn = getLookTurn(targetHRP, myHRP)
+                local id = nil
+                if er and er.getPlayerEntityId then
+                    local ok, gotId = pcall(er.getPlayerEntityId, target)
+                    if ok and gotId then id = gotId end
+                end
+                local payload
+                if id then payload = buildPayload(id, lookTurn) end
+                if not payload then
+                    local now = os.clock()
+                    local current = math.floor(now * settings.tickRate)
+                    payload = {
+                        lookTurn = lookTurn, updateTick = current, fromUpdateTick = current - 1,
+                        tick = current, time = now, swing = true, tickRate = settings.tickRate,
+                        combat = true, attack = true,
+                    }
+                end
+                isSilentAuraAttack = true
+                for hit = 1, silentAuraHitsPerTarget do
+                    pcall(function() attackRemote:FireServer(payload) end)
+                end
+                isSilentAuraAttack = false
+                log("Silent Aura: " .. target.Name)
+            end
+        end
+    end
+end)
 
 RunService.Heartbeat:Connect(function()
     if not settings.silentAuraEnabled then return end
@@ -286,59 +347,30 @@ RunService.Heartbeat:Connect(function()
     local myHRP = myChar:FindFirstChild("HumanoidRootPart")
     if not myHRP then return end
 
-    local targetsInRange = {}
+    local er = nil
+    if settings.aimbotMode == "Advanced" then er = getEntityRenderer() end
+
     for _, target in ipairs(currentAimbotTargets) do
         if target.Character then
             local targetHRP = target.Character:FindFirstChild("HumanoidRootPart")
             if targetHRP then
                 local dist = (myHRP.Position - targetHRP.Position).Magnitude
                 if dist <= settings.hitRange then
-                    table.insert(targetsInRange, {target = target, hrp = targetHRP})
+                    local alreadyQueued = false
+                    for _, q in ipairs(silentAuraQueue) do
+                        if q.target == target then alreadyQueued = true; break end
+                    end
+                    if not alreadyQueued then
+                        table.insert(silentAuraQueue, {
+                            target = target,
+                            hrp = targetHRP,
+                            myHRP = myHRP,
+                            er = er,
+                        })
+                    end
                 end
             end
         end
-    end
-
-    if #targetsInRange == 0 then return end
-
-    local er = nil
-    if settings.aimbotMode == "Advanced" then
-        er = getEntityRenderer()
-    end
-
-    for _, entry in ipairs(targetsInRange) do
-        local target = entry.target
-        local targetHRP = entry.hrp
-        local lookTurn = getLookTurn(targetHRP, myHRP)
-
-        local payload
-        if er and er.getPlayerEntityId then
-            local ok, id = pcall(er.getPlayerEntityId, target)
-            if ok and id then
-                payload = buildPayload(id, lookTurn)
-            end
-        end
-
-        if not payload then
-            local now = os.clock()
-            local current = math.floor(now * settings.tickRate)
-            payload = {
-                lookTurn = lookTurn,
-                updateTick = current,
-                fromUpdateTick = current - 1,
-                tick = current,
-                time = now,
-                swing = true,
-                tickRate = settings.tickRate,
-                combat = true,
-                attack = true,
-            }
-        end
-
-        for hit = 1, silentAuraHitsPerTarget do
-            pcall(function() attackRemote:FireServer(payload) end)
-        end
-        log("Silent Aura: " .. target.Name .. " x" .. silentAuraHitsPerTarget)
     end
 
     lastSilentAura = tick()
@@ -358,7 +390,7 @@ local function doPacketCrit()
     packetCritActive = false
 end
 
--- ===== Anti-Aim (каждый кадр) =====
+-- ===== Anti-Aim =====
 local antiAimSpin = 0
 local originalNeckC0, originalWaistC0 = nil, nil
 local function getJoints()
@@ -397,7 +429,7 @@ RunService.RenderStepped:Connect(function(dt)
     end
 end)
 
--- ===== Частицы от целей Aimbot (каждый кадр) =====
+-- ===== Частицы от целей Aimbot =====
 local targetParticles = {}
 local function createTargetParticles(character)
     if targetParticles[character] then return end
@@ -460,7 +492,7 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
--- ===== Шляпа-гуру (пирамида из 4 частей) =====
+-- ===== Шляпа-гуру =====
 local hatModel = Instance.new("Model"); hatModel.Name = "GuruHat"
 local hatBase = Instance.new("Part")
 hatBase.Name = "HatBase"; hatBase.Size = Vector3.new(2.2, 0.2, 2.2); hatBase.Shape = Enum.PartType.Block
@@ -507,31 +539,36 @@ local function onAttackCall(self, ...)
     if not myHRP then return nil end
     local targets = currentAttackTargets
     if #targets == 0 then return nil end
+    local er = nil
+    if settings.aimbotMode == "Advanced" then er = getEntityRenderer() end
     local firstPayload = nil
     for i, target in ipairs(targets) do
         local targetHRP = target.Character and target.Character:FindFirstChild("HumanoidRootPart")
         if targetHRP then
             local lookTurn = getLookTurn(targetHRP, myHRP)
-            local payload
-            if settings.aimbotMode == "Advanced" then
-                local er = getEntityRenderer()
-                if er and er.getPlayerEntityId then
-                    local ok, id = pcall(er.getPlayerEntityId, target)
-                    if ok and id then payload = buildPayload(id, lookTurn) end
-                end
+            local id = nil
+            if er and er.getPlayerEntityId then
+                local ok, gotId = pcall(er.getPlayerEntityId, target)
+                if ok and gotId then id = gotId end
             end
+            local payload
+            if id then payload = buildPayload(id, lookTurn) end
             if not payload then
+                local now = os.clock()
+                local current = math.floor(now * settings.tickRate)
                 payload = {
-                    lookTurn = lookTurn, updateTick = math.floor(os.clock() * settings.tickRate),
-                    fromUpdateTick = math.floor(os.clock() * settings.tickRate) - 1,
-                    tick = math.floor(os.clock() * settings.tickRate), time = os.clock(),
-                    swing = true, tickRate = settings.tickRate, combat = true, attack = true,
+                    lookTurn = lookTurn, updateTick = current, fromUpdateTick = current - 1,
+                    tick = current, time = now, swing = true, tickRate = settings.tickRate,
+                    combat = true, attack = true,
                 }
             end
             if i == 1 then firstPayload = payload
             else task.spawn(function() pcall(function() attackRemote:FireServer(payload) end) end) end
             log("Attack[" .. i .. "/" .. #targets .. "]: " .. target.Name)
         end
+    end
+    if settings.burstAttackEnabled and firstPayload and not isSilentAuraAttack then
+        sendBurst(attackRemote, firstPayload, settings.burstAttackCount)
     end
     return firstPayload
 end
@@ -580,7 +617,7 @@ end
 if not hooked then log("Хук не установлен") end
 
 -- ============================================================
--- CORNER SQUARES (каждый кадр)
+-- CORNER SQUARES
 -- ============================================================
 local MAX_SQUARES = 10
 local squarePool = {}
@@ -656,7 +693,7 @@ local gui = Instance.new("ScreenGui")
 gui.Name = "FullScript"; gui.ResetOnSpawn = false
 gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling; gui.Parent = game.CoreGui
 
-local expandedSize = UDim2.new(0, 460, 0, 880)
+local expandedSize = UDim2.new(0, 460, 0, 950)
 local collapsedSize = UDim2.new(0, 460, 0, 36)
 
 local frame = Instance.new("Frame")
@@ -753,19 +790,20 @@ makeToggle("Packet Crit", 212, false, function(v) settings.packetCritEnabled = v
 makeToggle("Anti-Aim", 246, false, function(v) settings.antiAimEnabled = v; log("Anti-Aim: " .. (v and "ON" or "OFF")) end)
 makeToggle("TP Walk", 280, false, function(v) settings.tpWalkEnabled = v; log("TP Walk: " .. (v and "ON" or "OFF")) end)
 makeToggle("Silent Aura", 314, false, function(v) settings.silentAuraEnabled = v; log("Silent Aura: " .. (v and "ON" or "OFF")) end)
-makeToggle("Corner Squares", 348, true, function(v) settings.targetSquareEnabled = v; log("Squares: " .. (v and "ON" or "OFF")) end)
-makeToggle("Частицы (от целей)", 382, false, function(v) settings.particlesEnabled = v; log("Частицы: " .. (v and "ON" or "OFF")) end)
-makeToggle("Шляпа-гуру", 416, false, function(v) settings.hatEnabled = v; log("Шляпа: " .. (v and "ON" or "OFF")) end)
-makeToggle("FOV Circle", 450, true, function(v) settings.fovCircleEnabled = v; log("FOV Circle: " .. (v and "ON" or "OFF")) end)
+makeToggle("Burst Attack (только ручной)", 348, false, function(v) settings.burstAttackEnabled = v; log("Burst: " .. (v and "ON" or "OFF")) end)
+makeToggle("Corner Squares", 382, true, function(v) settings.targetSquareEnabled = v; log("Squares: " .. (v and "ON" or "OFF")) end)
+makeToggle("Частицы (от целей)", 416, false, function(v) settings.particlesEnabled = v; log("Частицы: " .. (v and "ON" or "OFF")) end)
+makeToggle("Шляпа-гуру", 450, false, function(v) settings.hatEnabled = v; log("Шляпа: " .. (v and "ON" or "OFF")) end)
+makeToggle("FOV Circle", 484, true, function(v) settings.fovCircleEnabled = v; log("FOV Circle: " .. (v and "ON" or "OFF")) end)
 
-local aimModeBtn = makeBtn("Aimbot Mode: Advanced", 486, Color3.fromRGB(40, 80, 140))
+local aimModeBtn = makeBtn("Aimbot Mode: Advanced", 520, Color3.fromRGB(40, 80, 140))
 aimModeBtn.MouseButton1Click:Connect(function()
     settings.aimbotMode = (settings.aimbotMode == "Advanced") and "Basic" or "Advanced"
     aimModeBtn.Text = "Aimbot Mode: " .. settings.aimbotMode
     log("Aimbot Mode: " .. settings.aimbotMode)
 end)
 
-local countBtn = makeBtn("Multi Count: 3", 520, Color3.fromRGB(40, 80, 140))
+local countBtn = makeBtn("Multi Count: 3", 554, Color3.fromRGB(40, 80, 140))
 local countOptions = {3, 5, 8, 10}; local countIndex = 1
 countBtn.MouseButton1Click:Connect(function()
     countIndex = countIndex + 1; if countIndex > #countOptions then countIndex = 1 end
@@ -774,15 +812,24 @@ countBtn.MouseButton1Click:Connect(function()
     log("Multi Count: " .. settings.multiAimCount)
 end)
 
+local burstCountBtn = makeBtn("Burst Count: 5", 588, Color3.fromRGB(140, 40, 80))
+local burstOptions = {3, 5, 8, 10}; local burstIndex = 2
+burstCountBtn.MouseButton1Click:Connect(function()
+    burstIndex = burstIndex + 1; if burstIndex > #burstOptions then burstIndex = 1 end
+    settings.burstAttackCount = burstOptions[burstIndex]
+    burstCountBtn.Text = "Burst Count: " .. settings.burstAttackCount
+    log("Burst Count: " .. settings.burstAttackCount)
+end)
+
 local fovLabel = Instance.new("TextLabel")
-fovLabel.Size = UDim2.new(1, -24, 0, 18); fovLabel.Position = UDim2.new(0, 12, 0, 554)
+fovLabel.Size = UDim2.new(1, -24, 0, 18); fovLabel.Position = UDim2.new(0, 12, 0, 622)
 fovLabel.BackgroundTransparency = 1
 fovLabel.Text = "Aimbot FOV: " .. settings.aimbotRange .. (settings.aimbotRange >= 360 and " (все вокруг)" or "")
 fovLabel.TextColor3 = Color3.fromRGB(220, 220, 240); fovLabel.Font = Enum.Font.Gotham
 fovLabel.TextSize = 12; fovLabel.TextXAlignment = Enum.TextXAlignment.Left; fovLabel.Parent = content
 
 local sliderBg = Instance.new("Frame")
-sliderBg.Size = UDim2.new(1, -24, 0, 10); sliderBg.Position = UDim2.new(0, 12, 0, 576)
+sliderBg.Size = UDim2.new(1, -24, 0, 10); sliderBg.Position = UDim2.new(0, 12, 0, 644)
 sliderBg.BackgroundColor3 = Color3.fromRGB(70, 70, 90); sliderBg.BorderSizePixel = 0; sliderBg.Parent = content
 Instance.new("UICorner", sliderBg).CornerRadius = UDim.new(0, 5)
 local rel0 = (settings.aimbotRange - 30) / 330
@@ -819,14 +866,14 @@ UserInputService.InputEnded:Connect(function(input)
 end)
 
 local camFovLabel = Instance.new("TextLabel")
-camFovLabel.Size = UDim2.new(1, -24, 0, 18); camFovLabel.Position = UDim2.new(0, 12, 0, 596)
+camFovLabel.Size = UDim2.new(1, -24, 0, 18); camFovLabel.Position = UDim2.new(0, 12, 0, 664)
 camFovLabel.BackgroundTransparency = 1
 camFovLabel.Text = "Camera FOV: " .. settings.cameraFov .. " (макс 120)"
 camFovLabel.TextColor3 = Color3.fromRGB(220, 220, 240); camFovLabel.Font = Enum.Font.Gotham
 camFovLabel.TextSize = 12; camFovLabel.TextXAlignment = Enum.TextXAlignment.Left; camFovLabel.Parent = content
 
 local camSliderBg = Instance.new("Frame")
-camSliderBg.Size = UDim2.new(1, -24, 0, 10); camSliderBg.Position = UDim2.new(0, 12, 0, 618)
+camSliderBg.Size = UDim2.new(1, -24, 0, 10); camSliderBg.Position = UDim2.new(0, 12, 0, 686)
 camSliderBg.BackgroundColor3 = Color3.fromRGB(70, 70, 90); camSliderBg.BorderSizePixel = 0; camSliderBg.Parent = content
 Instance.new("UICorner", camSliderBg).CornerRadius = UDim.new(0, 5)
 local camRel0 = (settings.cameraFov - 30) / 90
@@ -863,7 +910,7 @@ UserInputService.InputEnded:Connect(function(input)
 end)
 
 local consoleFrame = Instance.new("Frame")
-consoleFrame.Size = UDim2.new(1, -24, 1, -660); consoleFrame.Position = UDim2.new(0, 12, 0, 646)
+consoleFrame.Size = UDim2.new(1, -24, 1, -730); consoleFrame.Position = UDim2.new(0, 12, 0, 716)
 consoleFrame.BackgroundColor3 = Color3.fromRGB(12, 12, 20); consoleFrame.BackgroundTransparency = 0.1
 consoleFrame.BorderSizePixel = 0; consoleFrame.Parent = content
 Instance.new("UICorner", consoleFrame).CornerRadius = UDim.new(0, 8)
@@ -915,7 +962,6 @@ consoleLabel.TextXAlignment = Enum.TextXAlignment.Left; consoleLabel.TextYAlignm
 consoleLabel.TextWrapped = true; consoleLabel.AutomaticSize = Enum.AutomaticSize.Y
 consoleLabel.Parent = scroll
 
--- Обновление шляпы по тумблеру
 RunService.Heartbeat:Connect(function()
     if hatModel and hatModel.Parent then
         local t = settings.hatEnabled and 0.5 or 1
@@ -927,5 +973,5 @@ RunService.Heartbeat:Connect(function()
 end)
 
 log("Full Script загружен.")
-log("Silent Aura оптимизирована: без task.wait внутри, payload кэшируется.")
-log("ESP и частицы — каждый кадр.")
+log("Burst Attack работает ТОЛЬКО при ручном ударе (флаг isSilentAuraAttack).")
+log("Silent Aura бьёт без Burst, растянута по времени.")
